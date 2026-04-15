@@ -109,6 +109,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeCommand
 		m.input.SetValue("")
 		m.input.Focus()
+		m.resizeViewport()
 		return m, textinput.Blink
 
 	case key.Matches(msg, keys.Left):
@@ -164,6 +165,7 @@ func (m *Model) updateCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeNormal
 		m.input.Blur()
 		m.status = ""
+		m.resizeViewport()
 		return m, nil
 
 	case key.Matches(msg, keys.Confirm):
@@ -171,7 +173,7 @@ func (m *Model) updateCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeNormal
 		m.input.Blur()
 		m.status = m.execCommand(cmd)
-		m.viewport.SetContent(m.renderArticles())
+		m.resizeViewport()
 		return m, nil
 	}
 
@@ -198,8 +200,17 @@ func (m *Model) syncViewportToCursor() {
 }
 
 func (m *Model) contentHeight() int {
-	// header (1) + tab bar (1) + separator (1) + footer (1) = 4 fixed lines
-	return m.height - 4
+	// Fixed chrome: header(1) + tabbar(1) + separator(1) = 3 lines
+	// Footer: inputBoxHeight when command mode, 1 line otherwise
+	if m.mode == modeCommand {
+		return m.height - 3 - inputBoxHeight
+	}
+	return m.height - 3 - 1
+}
+
+func (m *Model) resizeViewport() {
+	m.viewport.Height = m.contentHeight()
+	m.viewport.SetContent(m.renderArticles())
 }
 
 // ── Command palette ───────────────────────────────────────────────────────────

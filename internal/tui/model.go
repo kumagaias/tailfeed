@@ -20,10 +20,15 @@ const (
 
 const articlesLimit = 200
 
-// linesPerCard is the fixed visual height of every card (border×2 + title + meta + summary).
+// linesPerCard is the fixed visual height of every card:
+//   border(1) + title(1) + meta(1) + summary(1) + link(1) + border(1) = 6
+//
 // linesPerSlot includes the blank separator line between cards.
-const linesPerCard = 5
+const linesPerCard = 6
 const linesPerSlot = linesPerCard + 1
+
+// inputBoxHeight is the height of the command input box including its border.
+const inputBoxHeight = 3 // border-top + content + border-bottom
 
 // groupTab is the "All" virtual tab plus real DB groups.
 type groupTab struct {

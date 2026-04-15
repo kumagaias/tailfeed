@@ -148,17 +148,36 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	// ── Line 2: meta ────────────────────────────────────────────────────────
 	meta := styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))
 
-	// ── Line 3: summary (always one line; collapse embedded newlines) ───────
-	summaryText := " " // keep fixed height even when no summary
-	if a.Summary != "" {
-		oneliner := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
-		summaryText = truncate(oneliner, inner)
+	// ── Line 3: summary line 1 ──────────────────────────────────────────────
+	summaryFull := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
+	summaryL1 := " "
+	summaryL2 := " "
+	if summaryFull != "" {
+		runes := []rune(summaryFull)
+		if len(runes) <= inner {
+			summaryL1 = summaryFull
+		} else {
+			summaryL1 = string(runes[:inner-1]) + "…"
+			rest := string(runes[inner-1:])
+			if len([]rune(rest)) <= inner {
+				summaryL2 = rest
+			} else {
+				summaryL2 = string([]rune(rest)[:inner-1]) + "…"
+			}
+		}
 	}
-	summary := styleSummary.Render(summaryText)
+
+	// ── Line 4: link (subdued) ───────────────────────────────────────────────
+	linkLine := " "
+	if a.Link != "" {
+		linkLine = truncate(a.Link, inner)
+	}
 
 	content := indicator + title + "\n" +
 		"  " + meta + "\n" +
-		"  " + summary
+		"  " + styleSummary.Render(summaryL1) + "\n" +
+		"  " + styleSummary.Render(summaryL2) + "\n" +
+		"  " + styleMeta.Render(linkLine)
 
 	var s lipgloss.Style
 	switch {
