@@ -2,6 +2,9 @@
 tailfeed
 *.exe
 
+# Build artifacts
+dist/
+
 # Database
 *.db
 *.sqlite
