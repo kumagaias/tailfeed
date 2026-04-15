@@ -66,7 +66,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if msg.X >= r[0] && msg.X < r[1] && i != m.tabIdx {
 						m.tabIdx = i
 						_ = m.reloadArticles()
-						m.cursor = max(0, len(m.articles)-1)
 						m.centerViewportOnCursor()
 						m.updateDetailContent()
 						return m, nil
@@ -197,7 +196,6 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.tabIdx > 0 {
 			m.tabIdx--
 			_ = m.reloadArticles()
-			m.cursor = max(0, len(m.articles)-1)
 			m.centerViewportOnCursor()
 			m.updateDetailContent()
 		}
@@ -206,7 +204,6 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.tabIdx < len(m.tabs)-1 {
 			m.tabIdx++
 			_ = m.reloadArticles()
-			m.cursor = max(0, len(m.articles)-1)
 			m.centerViewportOnCursor()
 			m.updateDetailContent()
 		}
