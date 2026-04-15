@@ -56,7 +56,7 @@ type Model struct {
 // New creates the initial TUI model.
 func New(database *db.DB, poller *feed.Poller) (*Model, error) {
 	ti := textinput.New()
-	ti.Placeholder = "add <url>  |  remove <url>  |  group new <name>  |  group del <name>"
+	ti.Placeholder = "add <url>  |  remove <url>  |  list  |  group new <name>  |  group del <name>"
 	ti.CharLimit = 512
 
 	m := &Model{
