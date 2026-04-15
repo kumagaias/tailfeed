@@ -1,0 +1,77 @@
+package db
+
+import (
+	"database/sql"
+	"embed"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+
+	_ "modernc.org/sqlite"
+)
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+// DB wraps sql.DB with tailfeed-specific helpers.
+type DB struct {
+	*sql.DB
+}
+
+// WrapDB wraps an existing *sql.DB (for testing).
+func WrapDB(sqlDB *sql.DB) *DB { return &DB{sqlDB} }
+
+// MigrateForTest runs migrations on an already-open DB (for testing).
+func (d *DB) MigrateForTest() error { return d.migrate() }
+
+// Open opens (or creates) the SQLite database in ~/.config/tailfeed/.
+func Open() (*DB, error) {
+	dir, err := configDir()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("create config dir: %w", err)
+	}
+	dsn := filepath.Join(dir, "tailfeed.db") + "?_foreign_keys=on&_journal_mode=WAL"
+	sqlDB, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open db: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1) // SQLite: single writer
+	d := &DB{sqlDB}
+	if err := d.migrate(); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return d, nil
+}
+
+func configDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "tailfeed"), nil
+}
+
+func (d *DB) migrate() error {
+	entries, err := migrationsFS.ReadDir("migrations")
+	if err != nil {
+		return err
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	for _, e := range entries {
+		data, err := migrationsFS.ReadFile("migrations/" + e.Name())
+		if err != nil {
+			return err
+		}
+		if _, err := d.Exec(string(data)); err != nil {
+			return fmt.Errorf("run migration %s: %w", e.Name(), err)
+		}
+	}
+	return nil
+}

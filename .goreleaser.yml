@@ -1,0 +1,53 @@
+version: 2
+
+project_name: tailfeed
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: tailfeed
+    main: ./cmd/tailfeed
+    binary: tailfeed
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+brews:
+  - name: tailfeed
+    repository:
+      owner: kumagaias
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/kumagaias/tailfeed"
+    description: "A tail-style terminal RSS reader"
+    license: "MIT"
+    test: |
+      system "#{bin}/tailfeed", "--version"
+    install: |
+      bin.install "tailfeed"
+
+release:
+  github:
+    owner: kumagaias
+    name: tailfeed
