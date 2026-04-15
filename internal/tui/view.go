@@ -204,7 +204,7 @@ func (m *Model) renderFooter() string {
 	if m.mode == modeFeedList {
 		return ""
 	}
-	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  G newest  gg oldest  ^F/^B page  enter open  m read  / cmd  q quit")
+	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  G newest  gg oldest  ^F/^B page  enter open  m read  /list  / cmd  q quit")
 	return help
 }
 
