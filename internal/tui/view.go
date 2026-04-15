@@ -114,6 +114,19 @@ func (m *Model) renderTabBar() string {
 	return strings.Join(parts, " ")
 }
 
+// tabXRanges returns the [start, end) X column range of each tab in the tab bar.
+// Each tab is rendered with 1-cell padding on each side, tabs separated by 1 space.
+func (m *Model) tabXRanges() [][2]int {
+	ranges := make([][2]int, len(m.tabs))
+	x := 0
+	for i, t := range m.tabs {
+		w := utf8.RuneCountInString(t.name) + 2 // +2 for left/right padding
+		ranges[i] = [2]int{x, x + w}
+		x += w + 1 // +1 for the space separator between tabs
+	}
+	return ranges
+}
+
 // renderArticles renders all cards. Each card occupies exactly linesPerSlot lines
 // (linesPerCard visible + 1 blank separator), so cursor offsets are predictable.
 func (m *Model) renderArticles() string {

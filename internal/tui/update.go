@@ -59,7 +59,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseMsg:
-		// Delegate scroll events to viewport; other mouse events ignored.
+		// Tab bar is at row 1. A left click there switches groups.
+		if msg.Type == tea.MouseLeft && msg.Y == 1 && m.mode == modeNormal {
+			for i, r := range m.tabXRanges() {
+				if msg.X >= r[0] && msg.X < r[1] && i != m.tabIdx {
+					m.tabIdx = i
+					_ = m.reloadArticles()
+					m.cursor = max(0, len(m.articles)-1)
+					m.centerViewportOnCursor()
+					m.updateDetailContent()
+					return m, nil
+				}
+			}
+		}
+		// Delegate scroll events to viewport.
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
