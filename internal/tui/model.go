@@ -21,10 +21,10 @@ const (
 const articlesLimit = 200
 
 // linesPerCard is the fixed visual height of every card:
-//   border(1) + title(1) + meta(1) + summary(1) + link(1) + border(1) = 6
+//   border(1) + title(1) + meta(1) + summary(1) + border(1) = 5
 //
 // linesPerSlot includes the blank separator line between cards.
-const linesPerCard = 6
+const linesPerCard = 5
 const linesPerSlot = linesPerCard + 1
 
 // inputBoxHeight is the height of the command input box including its border.
@@ -46,10 +46,12 @@ type Model struct {
 	tabs     []groupTab
 	tabIdx   int
 	articles []db.Article
-	cursor   int
-	viewport viewport.Model
-	input    textinput.Model
-	status   string // transient status message
+	cursor     int
+	viewport   viewport.Model
+	input      textinput.Model
+	status     string // transient status message
+	detailOpen bool
+	detailVP   viewport.Model
 
 	// feedListItems holds rendered lines for the feed list overlay.
 	feedListItems []string
@@ -117,20 +119,18 @@ func (m *Model) reloadArticles() error {
 	return nil
 }
 
-// jumpToNewest moves the cursor to the newest article (last in ASC list) and scrolls to bottom.
+// jumpToNewest moves the cursor to the newest article and centers the viewport on it.
 func (m *Model) jumpToNewest() {
 	if len(m.articles) > 0 {
 		m.cursor = len(m.articles) - 1
 	}
-	m.viewport.SetContent(m.renderArticles())
-	m.viewport.GotoBottom()
+	m.centerViewportOnCursor()
 }
 
-// jumpToOldest moves the cursor to the oldest article (first in ASC list) and scrolls to top.
+// jumpToOldest moves the cursor to the oldest article and centers the viewport on it.
 func (m *Model) jumpToOldest() {
 	m.cursor = 0
-	m.viewport.SetContent(m.renderArticles())
-	m.viewport.GotoTop()
+	m.centerViewportOnCursor()
 }
 
 func (m *Model) currentGroupID() *int64 {
@@ -138,6 +138,22 @@ func (m *Model) currentGroupID() *int64 {
 		return nil
 	}
 	return m.tabs[m.tabIdx].id
+}
+
+// listWidth returns the width of the article list pane.
+func (m *Model) listWidth() int {
+	if m.detailOpen {
+		return m.width * 2 / 5
+	}
+	return m.width
+}
+
+// detailPaneWidth returns the width of the detail pane (0 when closed).
+func (m *Model) detailPaneWidth() int {
+	if !m.detailOpen {
+		return 0
+	}
+	return m.width - m.listWidth() - 1 // 1 for divider
 }
 
 func max(a, b int) int {

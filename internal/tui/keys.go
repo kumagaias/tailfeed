@@ -17,6 +17,7 @@ type keyMap struct {
 	Quit       key.Binding
 	Confirm    key.Binding
 	Cancel     key.Binding
+	ViewDetail key.Binding // v — toggle detail pane
 }
 
 var keys = keyMap{
@@ -74,5 +75,9 @@ var keys = keyMap{
 	Cancel: key.NewBinding(
 		key.WithKeys("esc", "ctrl+c"),
 		key.WithHelp("esc/^C", "cancel"),
+	),
+	ViewDetail: key.NewBinding(
+		key.WithKeys("v"),
+		key.WithHelp("v", "detail"),
 	),
 }

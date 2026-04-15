@@ -78,6 +78,15 @@ func (m *Model) View() string {
 	b.WriteString("\n")
 	if m.mode == modeFeedList {
 		b.WriteString(m.renderFeedList())
+	} else if m.detailOpen && m.detailPaneWidth() > 0 {
+		h := m.contentHeight()
+		divider := strings.Repeat("│\n", h-1) + "│"
+		body := lipgloss.JoinHorizontal(lipgloss.Top,
+			m.viewport.View(),
+			divider,
+			m.detailVP.View(),
+		)
+		b.WriteString(body)
 	} else {
 		b.WriteString(m.viewport.View())
 	}
@@ -111,7 +120,7 @@ func (m *Model) renderArticles() string {
 	if len(m.articles) == 0 {
 		return styleMeta.Render("\n  No articles yet. Add a feed with /add <url>\n")
 	}
-	innerWidth := m.width - 4 // border (1+1) + padding (1+1)
+	innerWidth := m.listWidth() - 4 // border (1+1) + padding (1+1)
 	if innerWidth < 10 {
 		innerWidth = 10
 	}
@@ -124,7 +133,7 @@ func (m *Model) renderArticles() string {
 }
 
 // renderCard renders a single article card.
-// Content is always exactly 3 lines (title + meta + summary) so the card
+// Content is exactly 3 lines (title + meta + summary) so the card
 // occupies a predictable linesPerCard=5 lines (borders included).
 func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	selected := idx == m.cursor
@@ -148,36 +157,21 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	// ── Line 2: meta ────────────────────────────────────────────────────────
 	meta := styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))
 
-	// ── Line 3: summary line 1 ──────────────────────────────────────────────
+	// ── Line 3: summary (one line) ──────────────────────────────────────────
 	summaryFull := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
-	summaryL1 := " "
-	summaryL2 := " "
+	summaryLine := " "
 	if summaryFull != "" {
 		runes := []rune(summaryFull)
 		if len(runes) <= inner {
-			summaryL1 = summaryFull
+			summaryLine = summaryFull
 		} else {
-			summaryL1 = string(runes[:inner-1]) + "…"
-			rest := string(runes[inner-1:])
-			if len([]rune(rest)) <= inner {
-				summaryL2 = rest
-			} else {
-				summaryL2 = string([]rune(rest)[:inner-1]) + "…"
-			}
+			summaryLine = string(runes[:inner-1]) + "…"
 		}
-	}
-
-	// ── Line 4: link (subdued) ───────────────────────────────────────────────
-	linkLine := " "
-	if a.Link != "" {
-		linkLine = truncate(a.Link, inner)
 	}
 
 	content := indicator + title + "\n" +
 		"  " + meta + "\n" +
-		"  " + styleSummary.Render(summaryL1) + "\n" +
-		"  " + styleSummary.Render(summaryL2) + "\n" +
-		"  " + styleMeta.Render(linkLine)
+		"  " + styleSummary.Render(summaryLine)
 
 	var s lipgloss.Style
 	switch {
@@ -223,7 +217,7 @@ func (m *Model) renderFooter() string {
 	if m.mode == modeFeedList {
 		return ""
 	}
-	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  G newest  gg oldest  ^F/^B page  enter open  m read  /list  / cmd  q quit")
+	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  G newest  gg oldest  ^F/^B page  v detail  enter open  m read  / cmd  q quit")
 	return help
 }
 
@@ -282,6 +276,77 @@ func filterEmpty(ss ...string) []string {
 		}
 	}
 	return out
+}
+
+// renderDetailContent renders the full article detail for the right pane.
+func (m *Model) renderDetailContent() string {
+	if m.cursor >= len(m.articles) {
+		return ""
+	}
+	a := m.articles[m.cursor]
+	w := m.detailPaneWidth() - 2 // inner width (padding)
+	if w < 10 {
+		w = 10
+	}
+
+	var b strings.Builder
+
+	// Title (word-wrapped)
+	titleWrapped := wordWrap(a.Title, w)
+	b.WriteString(styleTitle.Render(titleWrapped))
+	b.WriteString("\n\n")
+
+	// Meta
+	b.WriteString(styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), w)))
+	b.WriteString("\n\n")
+
+	// Full summary
+	summary := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
+	if summary != "" {
+		b.WriteString(styleSummary.Render(wordWrap(summary, w)))
+		b.WriteString("\n\n")
+	}
+
+	// Link
+	if a.Link != "" {
+		b.WriteString(styleMeta.Render(truncate(a.Link, w)))
+	}
+
+	return lipgloss.NewStyle().Padding(0, 1).Render(b.String())
+}
+
+// wordWrap breaks s into lines of at most width runes, breaking at word boundaries.
+func wordWrap(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return s
+	}
+	var lines []string
+	var cur strings.Builder
+	curLen := 0
+	for _, w := range words {
+		wLen := utf8.RuneCountInString(w)
+		if curLen == 0 {
+			cur.WriteString(w)
+			curLen = wLen
+		} else if curLen+1+wLen <= width {
+			cur.WriteString(" ")
+			cur.WriteString(w)
+			curLen += 1 + wLen
+		} else {
+			lines = append(lines, cur.String())
+			cur.Reset()
+			cur.WriteString(w)
+			curLen = wLen
+		}
+	}
+	if curLen > 0 {
+		lines = append(lines, cur.String())
+	}
+	return strings.Join(lines, "\n")
 }
 
 // visLen returns the visual length of a styled string (strips ANSI escape codes).

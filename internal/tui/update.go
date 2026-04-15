@@ -36,21 +36,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport = viewport.New(msg.Width, m.contentHeight())
-		// Start at newest (bottom)
+		m.viewport = viewport.New(m.listWidth(), m.contentHeight())
+		m.detailVP = viewport.New(m.detailPaneWidth(), m.contentHeight())
 		m.cursor = max(0, len(m.articles)-1)
-		m.viewport.SetContent(m.renderArticles())
-		m.viewport.GotoBottom()
+		m.centerViewportOnCursor()
+		m.updateDetailContent()
 		return m, nil
 
 	case newArticleMsg:
-		atBottom := m.viewport.AtBottom()
+		atNewest := m.cursor == len(m.articles)-1
 		_ = m.reloadArticles()
-		if atBottom {
-			// follow new articles like tail -f
+		if atNewest {
 			m.cursor = max(0, len(m.articles)-1)
-			m.viewport.SetContent(m.renderArticles())
-			m.viewport.GotoBottom()
+			m.centerViewportOnCursor()
 		} else {
 			m.viewport.SetContent(m.renderArticles())
 		}
@@ -85,6 +83,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.pendingG {
 			m.pendingG = false
 			m.jumpToOldest()
+			m.updateDetailContent()
 			return m, nil
 		}
 		m.pendingG = true
@@ -98,6 +97,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, keys.GotoBottom):
 		m.jumpToNewest()
+		m.updateDetailContent()
 
 	case key.Matches(msg, keys.PageDown):
 		m.viewport.HalfViewDown()
@@ -117,8 +117,8 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.tabIdx--
 			_ = m.reloadArticles()
 			m.cursor = max(0, len(m.articles)-1)
-			m.viewport.SetContent(m.renderArticles())
-			m.viewport.GotoBottom()
+			m.centerViewportOnCursor()
+			m.updateDetailContent()
 		}
 
 	case key.Matches(msg, keys.Right):
@@ -126,21 +126,28 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.tabIdx++
 			_ = m.reloadArticles()
 			m.cursor = max(0, len(m.articles)-1)
-			m.viewport.SetContent(m.renderArticles())
-			m.viewport.GotoBottom()
+			m.centerViewportOnCursor()
+			m.updateDetailContent()
 		}
 
 	case key.Matches(msg, keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
 			m.syncViewportToCursor()
+			m.updateDetailContent()
 		}
 
 	case key.Matches(msg, keys.Down):
 		if m.cursor < len(m.articles)-1 {
 			m.cursor++
 			m.syncViewportToCursor()
+			m.updateDetailContent()
 		}
+
+	case key.Matches(msg, keys.ViewDetail):
+		m.detailOpen = !m.detailOpen
+		m.resizeViewport()
+		m.updateDetailContent()
 
 	case key.Matches(msg, keys.Open):
 		if m.cursor < len(m.articles) {
@@ -182,16 +189,36 @@ func (m *Model) updateCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, tiCmd
 }
 
-// syncViewportToCursor re-renders and centers the viewport on the cursor card (vim zz style).
-// Each card occupies exactly linesPerSlot lines, so offset is cursor × linesPerSlot.
+// scrolloff is the minimum number of lines kept above/below the cursor card.
+const scrolloff = 2
+
+// syncViewportToCursor re-renders and scrolls just enough to keep the cursor
+// card visible with scrolloff padding (vim-style). Only G/gg force centering.
 func (m *Model) syncViewportToCursor() {
 	m.viewport.SetContent(m.renderArticles())
 
-	// Line at which the cursor card starts
 	cardTop := m.cursor * linesPerSlot
-	// Center of the card (middle of linesPerCard visible lines)
+	cardBot := cardTop + linesPerCard // exclusive bottom line of card
+
+	top := m.viewport.YOffset
+	bot := top + m.viewport.Height
+
+	if cardTop-scrolloff < top {
+		// card is above visible area → scroll up
+		m.viewport.SetYOffset(max(0, cardTop-scrolloff))
+	} else if cardBot+scrolloff > bot {
+		// card is below visible area → scroll down
+		m.viewport.SetYOffset(cardBot + scrolloff - m.viewport.Height)
+	}
+	// otherwise card is already fully visible → no scroll
+}
+
+// centerViewportOnCursor scrolls so the cursor card is exactly in the middle.
+// Used by G and gg.
+func (m *Model) centerViewportOnCursor() {
+	m.viewport.SetContent(m.renderArticles())
+	cardTop := m.cursor * linesPerSlot
 	center := cardTop + linesPerCard/2
-	// Scroll so the center of the card aligns with the center of the viewport
 	offset := center - m.viewport.Height/2
 	if offset < 0 {
 		offset = 0
@@ -209,8 +236,22 @@ func (m *Model) contentHeight() int {
 }
 
 func (m *Model) resizeViewport() {
-	m.viewport.Height = m.contentHeight()
+	h := m.contentHeight()
+	m.viewport.Width = m.listWidth()
+	m.viewport.Height = h
 	m.viewport.SetContent(m.renderArticles())
+	m.detailVP.Width = m.detailPaneWidth()
+	m.detailVP.Height = h
+	m.updateDetailContent()
+}
+
+// updateDetailContent re-renders the detail pane for the current cursor position.
+func (m *Model) updateDetailContent() {
+	if !m.detailOpen || m.detailPaneWidth() <= 0 {
+		return
+	}
+	m.detailVP.SetYOffset(0)
+	m.detailVP.SetContent(m.renderDetailContent())
 }
 
 // ── Command palette ───────────────────────────────────────────────────────────
