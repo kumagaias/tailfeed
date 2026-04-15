@@ -101,66 +101,60 @@ func (m *Model) renderTabBar() string {
 	return strings.Join(parts, " ")
 }
 
-// renderArticles renders all cards and updates m.cardOffsets with each card's starting line.
+// renderArticles renders all cards. Each card occupies exactly linesPerSlot lines
+// (linesPerCard visible + 1 blank separator), so cursor offsets are predictable.
 func (m *Model) renderArticles() string {
 	if len(m.articles) == 0 {
-		m.cardOffsets = nil
 		return styleMeta.Render("\n  No articles yet. Add a feed with /add <url>\n")
 	}
 	innerWidth := m.width - 4 // border (1+1) + padding (1+1)
 	if innerWidth < 10 {
 		innerWidth = 10
 	}
-
-	m.cardOffsets = make([]int, len(m.articles))
 	var b strings.Builder
-	currentLine := 0
-
 	for i, a := range m.articles {
-		m.cardOffsets[i] = currentLine
-		card := m.renderCard(i, a, innerWidth)
-		// count actual rendered lines (including borders added by lipgloss)
-		lineCount := strings.Count(card, "\n") + 1
-		currentLine += lineCount + 1 // +1 for the trailing \n separator between cards
-		b.WriteString(card)
-		b.WriteString("\n")
+		b.WriteString(m.renderCard(i, a, innerWidth))
+		b.WriteString("\n") // blank separator → total = linesPerSlot per card
 	}
 	return b.String()
 }
 
+// renderCard renders a single article card.
+// Content is always exactly 3 lines (title + meta + summary) so the card
+// occupies a predictable linesPerCard=5 lines (borders included).
 func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	selected := idx == m.cursor
 
-	// Reserve 2 chars for the cursor indicator ("▶ ")
-	innerWidth := width - 2
-	if innerWidth < 4 {
-		innerWidth = 4
+	// inner content width (card border=2, padding=2 → 4 chars total)
+	inner := width - 2 // reserve 2 for "▶ " / "  " prefix
+	if inner < 4 {
+		inner = 4
 	}
 
-	title := truncate(a.Title, innerWidth)
+	// ── Line 1: title ──────────────────────────────────────────────────────
+	title := truncate(a.Title, inner)
+	indicator := "  "
 	if selected {
+		indicator = styleCursorBar.Render("▶ ")
 		title = styleCursorBar.Render(title)
 	} else if !a.IsRead {
 		title = styleTitle.Render(title)
 	}
 
-	meta := styleMeta.Render(a.FeedTitle + "  ·  " + humanTime(a.PublishedAt))
+	// ── Line 2: meta ────────────────────────────────────────────────────────
+	meta := styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))
 
-	summary := ""
+	// ── Line 3: summary (always one line; collapse embedded newlines) ───────
+	summaryText := " " // keep fixed height even when no summary
 	if a.Summary != "" {
-		summary = styleSummary.Render(truncate(stripHTML(a.Summary), innerWidth))
+		oneliner := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
+		summaryText = truncate(oneliner, inner)
 	}
+	summary := styleSummary.Render(summaryText)
 
-	// Prefix title with cursor indicator
-	indicator := "  "
-	if selected {
-		indicator = styleCursorBar.Render("▶ ")
-	}
-	lines := filterEmpty(indicator+title, "  "+meta)
-	if summary != "" {
-		lines = append(lines, "  "+summary)
-	}
-	content := strings.Join(lines, "\n")
+	content := indicator + title + "\n" +
+		"  " + meta + "\n" +
+		"  " + summary
 
 	var s lipgloss.Style
 	switch {

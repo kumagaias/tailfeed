@@ -19,6 +19,11 @@ const (
 
 const articlesLimit = 200
 
+// linesPerCard is the fixed visual height of every card (border×2 + title + meta + summary).
+// linesPerSlot includes the blank separator line between cards.
+const linesPerCard = 5
+const linesPerSlot = linesPerCard + 1
+
 // groupTab is the "All" virtual tab plus real DB groups.
 type groupTab struct {
 	id   *int64 // nil = "All"
@@ -39,10 +44,6 @@ type Model struct {
 	viewport viewport.Model
 	input    textinput.Model
 	status   string // transient status message
-
-	// cardOffsets[i] is the line offset (0-based) at which card i starts in viewport content.
-	// Updated every time renderArticles() is called.
-	cardOffsets []int
 
 	// pendingG is true after a single "g" press, waiting for a second to form "gg".
 	pendingG bool
