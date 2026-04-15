@@ -126,13 +126,13 @@ func (m *Model) renderTabBar() string {
 
 	var searchText string
 	if m.mode == modeFind && m.input.Value() != "" {
-		searchText = "🔍 " + m.input.Value() + "▌"
+		searchText = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Render("🔍 " + m.input.Value() + "▌")
 	} else if m.mode == modeFind {
-		searchText = "🔍 ▌"
+		searchText = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Render("🔍 ▌")
 	} else {
-		searchText = "🔍 search..."
+		searchText = styleHelp.Render("🔍 search...")
 	}
-	right := styleInput.Render(searchText)
+	right := "[" + searchText + "]"
 	pad := m.width - lipgloss.Width(tabs) - lipgloss.Width(right)
 	if pad > 0 {
 		tabs += strings.Repeat(" ", pad) + right

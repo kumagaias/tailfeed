@@ -199,7 +199,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Tab bar is at row 1 — switch group or activate search.
 			if msg.Y == 1 {
-				searchWidth := lipgloss.Width(styleInput.Render("🔍 search..."))
+				searchWidth := lipgloss.Width("[" + styleHelp.Render("🔍 search...") + "]")
 				if msg.X >= m.width-searchWidth {
 					_, cmd := m.cmdFind(nil)
 					return m, cmd

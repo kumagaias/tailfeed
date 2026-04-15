@@ -33,21 +33,19 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-homebrew_casks:
+brews:
   - name: tailfeed
-    binaries:
-      - tailfeed
     repository:
       owner: kumagaias
       name: homebrew-tap
-    directory: Casks
+    directory: Formula
     homepage: "https://github.com/kumagaias/tailfeed"
     description: "A tail-style terminal RSS reader"
     license: "MIT"
-    hooks:
-      post:
-        install: |
-          system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/tailfeed"]
+    test: |
+      system "#{bin}/tailfeed", "--version"
+    install: |
+      bin.install "tailfeed"
 
 release:
   github:
