@@ -7,6 +7,9 @@ type keyMap struct {
 	Down       key.Binding
 	Left       key.Binding
 	Right      key.Binding
+	PrevGroup  key.Binding // [ ^ H shift+left
+	NextGroup  key.Binding // ] $ L shift+right
+	Stock      key.Binding // space
 	GotoBottom key.Binding // Shift+G
 	GotoTopG   key.Binding // first g (gg detection)
 	PageDown   key.Binding // Ctrl+F
@@ -17,6 +20,8 @@ type keyMap struct {
 	Quit       key.Binding
 	Confirm    key.Binding
 	Cancel     key.Binding
+	ViewDetail key.Binding // v — toggle detail pane
+	Delete     key.Binding // d — delete selected feed in list overlay
 }
 
 var keys = keyMap{
@@ -30,11 +35,23 @@ var keys = keyMap{
 	),
 	Left: key.NewBinding(
 		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "prev group"),
+		key.WithHelp("←/h", "prev article"),
 	),
 	Right: key.NewBinding(
 		key.WithKeys("right", "l"),
-		key.WithHelp("→/l", "next group"),
+		key.WithHelp("→/l", "next article"),
+	),
+	PrevGroup: key.NewBinding(
+		key.WithKeys("[", "^", "H", "shift+left"),
+		key.WithHelp("[/^/H", "prev group"),
+	),
+	NextGroup: key.NewBinding(
+		key.WithKeys("]", "$", "L", "shift+right"),
+		key.WithHelp("]/$/L", "next group"),
+	),
+	Stock: key.NewBinding(
+		key.WithKeys(" "),
+		key.WithHelp("space", "stock"),
 	),
 	GotoBottom: key.NewBinding(
 		key.WithKeys("G"),
@@ -45,12 +62,12 @@ var keys = keyMap{
 		key.WithHelp("gg", "oldest"),
 	),
 	PageDown: key.NewBinding(
-		key.WithKeys("ctrl+f"),
-		key.WithHelp("^F", "page down"),
+		key.WithKeys("ctrl+f", "ctrl+j"),
+		key.WithHelp("^F/^J", "page down"),
 	),
 	PageUp: key.NewBinding(
-		key.WithKeys("ctrl+b"),
-		key.WithHelp("^B", "page up"),
+		key.WithKeys("ctrl+b", "ctrl+k"),
+		key.WithHelp("^B/^K", "page up"),
 	),
 	Command: key.NewBinding(
 		key.WithKeys("/"),
@@ -74,5 +91,13 @@ var keys = keyMap{
 	Cancel: key.NewBinding(
 		key.WithKeys("esc", "ctrl+c"),
 		key.WithHelp("esc/^C", "cancel"),
+	),
+	ViewDetail: key.NewBinding(
+		key.WithKeys("v"),
+		key.WithHelp("v", "detail"),
+	),
+	Delete: key.NewBinding(
+		key.WithKeys("d"),
+		key.WithHelp("d", "delete feed"),
 	),
 }

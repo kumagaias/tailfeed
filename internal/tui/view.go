@@ -48,6 +48,9 @@ var (
 			Foreground(lipgloss.Color("12")).
 			Bold(true)
 
+	styleHeart      = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	styleHeartEmpty = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
 	styleTitle = lipgloss.NewStyle().Bold(true)
 
 	styleMeta = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -78,6 +81,17 @@ func (m *Model) View() string {
 	b.WriteString("\n")
 	if m.mode == modeFeedList {
 		b.WriteString(m.renderFeedList())
+	} else if m.mode == modeSuggest {
+		b.WriteString(m.renderSuggestList())
+	} else if m.detailOpen && m.detailPaneWidth() > 0 {
+		h := m.contentHeight()
+		divider := strings.Repeat("│\n", h-1) + "│"
+		body := lipgloss.JoinHorizontal(lipgloss.Top,
+			m.viewport.View(),
+			divider,
+			m.detailVP.View(),
+		)
+		b.WriteString(body)
 	} else {
 		b.WriteString(m.viewport.View())
 	}
@@ -89,7 +103,13 @@ func (m *Model) View() string {
 func (m *Model) renderHeader() string {
 	brand := styleBrand.Render("tailfeed")
 	count := fmt.Sprintf("  %d articles", len(m.articles))
-	return brand + styleMeta.Render(count)
+	left := brand + styleMeta.Render(count)
+	help := styleHelp.Render("↑↓/jk move  ←→/hl detail  space ♥  G/gg  [ ] groups  / cmd  q quit")
+	pad := m.width - visLen(left) - visLen(help)
+	if pad > 0 {
+		return left + strings.Repeat(" ", pad) + help
+	}
+	return left
 }
 
 func (m *Model) renderTabBar() string {
@@ -102,7 +122,35 @@ func (m *Model) renderTabBar() string {
 			parts = append(parts, styleTabInactive.Render(label))
 		}
 	}
-	return strings.Join(parts, " ")
+	tabs := strings.Join(parts, " ")
+
+	var searchText string
+	if m.mode == modeFind && m.input.Value() != "" {
+		searchText = "🔍 " + m.input.Value() + "▌"
+	} else if m.mode == modeFind {
+		searchText = "🔍 ▌"
+	} else {
+		searchText = "🔍 search..."
+	}
+	right := styleInput.Render(searchText)
+	pad := m.width - lipgloss.Width(tabs) - lipgloss.Width(right)
+	if pad > 0 {
+		tabs += strings.Repeat(" ", pad) + right
+	}
+	return tabs
+}
+
+// tabXRanges returns the [start, end) X column range of each tab in the tab bar.
+// Each tab is rendered with 1-cell padding on each side, tabs separated by 1 space.
+func (m *Model) tabXRanges() [][2]int {
+	ranges := make([][2]int, len(m.tabs))
+	x := 0
+	for i, t := range m.tabs {
+		w := utf8.RuneCountInString(t.name) + 2 // +2 for left/right padding
+		ranges[i] = [2]int{x, x + w}
+		x += w + 1 // +1 for the space separator between tabs
+	}
+	return ranges
 }
 
 // renderArticles renders all cards. Each card occupies exactly linesPerSlot lines
@@ -111,7 +159,7 @@ func (m *Model) renderArticles() string {
 	if len(m.articles) == 0 {
 		return styleMeta.Render("\n  No articles yet. Add a feed with /add <url>\n")
 	}
-	innerWidth := m.width - 4 // border (1+1) + padding (1+1)
+	innerWidth := m.listWidth() - 4 // border (1+1) + padding (1+1)
 	if innerWidth < 10 {
 		innerWidth = 10
 	}
@@ -124,60 +172,50 @@ func (m *Model) renderArticles() string {
 }
 
 // renderCard renders a single article card.
-// Content is always exactly 3 lines (title + meta + summary) so the card
+// Content is exactly 3 lines (title + meta + summary) so the card
 // occupies a predictable linesPerCard=5 lines (borders included).
 func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	selected := idx == m.cursor
 
-	// inner content width (card border=2, padding=2 → 4 chars total)
-	inner := width - 2 // reserve 2 for "▶ " / "  " prefix
+	// inner content width: reserve 3 chars for "▶❤ " / " ❤ " prefix
+	inner := width - 3
 	if inner < 4 {
 		inner = 4
 	}
 
 	// ── Line 1: title ──────────────────────────────────────────────────────
 	title := truncate(a.Title, inner)
-	indicator := "  "
+	cursor := " "
 	if selected {
-		indicator = styleCursorBar.Render("▶ ")
+		cursor = styleCursorBar.Render("▶")
 		title = styleCursorBar.Render(title)
 	} else if !a.IsRead {
 		title = styleTitle.Render(title)
 	}
+	heart := styleHeartEmpty.Render("❤")
+	if a.IsStocked {
+		heart = styleHeart.Render("❤")
+	}
+	indicator := cursor + heart + " "
 
 	// ── Line 2: meta ────────────────────────────────────────────────────────
 	meta := styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))
 
-	// ── Line 3: summary line 1 ──────────────────────────────────────────────
+	// ── Line 3: summary (one line) ──────────────────────────────────────────
 	summaryFull := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
-	summaryL1 := " "
-	summaryL2 := " "
+	summaryLine := " "
 	if summaryFull != "" {
 		runes := []rune(summaryFull)
 		if len(runes) <= inner {
-			summaryL1 = summaryFull
+			summaryLine = summaryFull
 		} else {
-			summaryL1 = string(runes[:inner-1]) + "…"
-			rest := string(runes[inner-1:])
-			if len([]rune(rest)) <= inner {
-				summaryL2 = rest
-			} else {
-				summaryL2 = string([]rune(rest)[:inner-1]) + "…"
-			}
+			summaryLine = string(runes[:inner-1]) + "…"
 		}
-	}
-
-	// ── Line 4: link (subdued) ───────────────────────────────────────────────
-	linkLine := " "
-	if a.Link != "" {
-		linkLine = truncate(a.Link, inner)
 	}
 
 	content := indicator + title + "\n" +
 		"  " + meta + "\n" +
-		"  " + styleSummary.Render(summaryL1) + "\n" +
-		"  " + styleSummary.Render(summaryL2) + "\n" +
-		"  " + styleMeta.Render(linkLine)
+		"  " + styleSummary.Render(summaryLine)
 
 	var s lipgloss.Style
 	switch {
@@ -197,21 +235,117 @@ var styleFeedList = lipgloss.NewStyle().
 	Padding(0, 1)
 
 func (m *Model) renderFeedList() string {
-	title := styleCursorBar.Render(fmt.Sprintf("Registered feeds (%d)", len(m.feedListItems)))
-	lines := []string{title, ""}
-	for _, item := range m.feedListItems {
-		lines = append(lines, "  "+truncate(item, m.width-8))
+	isHelp := m.feedListFeeds == nil && len(m.feedListItems) > 0
+
+	var title string
+	if isHelp {
+		title = styleCursorBar.Render("Help — keybindings & commands")
+	} else {
+		title = styleCursorBar.Render(fmt.Sprintf("Registered feeds (%d)", len(m.feedListItems)))
 	}
-	if len(m.feedListItems) == 0 {
+	lines := []string{title, ""}
+
+	for i, item := range m.feedListItems {
+		if isHelp {
+			// Help lines: section headers are unindented and bold, others indented.
+			if item == "" {
+				lines = append(lines, "")
+			} else if len(item) > 0 && item[0] != ' ' {
+				lines = append(lines, styleTitle.Render(item))
+			} else {
+				lines = append(lines, styleMeta.Render(item))
+			}
+		} else {
+			prefix := "  "
+			text := truncate(item, m.width-10)
+			if i == m.feedListCursor {
+				prefix = styleCursorBar.Render("▶ ")
+				text = styleTitle.Render(text)
+			}
+			lines = append(lines, prefix+text)
+		}
+	}
+
+	if !isHelp && len(m.feedListItems) == 0 {
 		lines = append(lines, styleMeta.Render("  No feeds registered."))
 	}
-	lines = append(lines, "", styleHelp.Render("  esc / q  close"))
+
+	if m.feedListConfirm {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true).Render("  Delete this feed? y/enter to confirm, any other key to cancel"))
+	} else {
+		if isHelp {
+			lines = append(lines, "", styleHelp.Render("  esc / q  close"))
+		} else {
+			lines = append(lines, "", styleHelp.Render("  ↑↓/jk select  d delete  esc/q close"))
+		}
+	}
+	panel := styleFeedList.Width(m.width - 4).Render(strings.Join(lines, "\n"))
+	return panel
+}
+
+func (m *Model) renderSuggestList() string {
+	selected := len(m.suggestSelected)
+	var titleStr string
+	if selected > 0 {
+		titleStr = styleCursorBar.Render(fmt.Sprintf("Suggested feeds (%d)  — %d selected", len(m.suggestFeeds), selected))
+	} else {
+		titleStr = styleCursorBar.Render(fmt.Sprintf("Suggested feeds (%d)", len(m.suggestFeeds)))
+	}
+	footer := styleHelp.Render("  ↑↓/jk move  space select  enter add selected (or current)  esc cancel")
+	// 4 lines per item (title + url + desc + blank), 4 lines overhead
+	maxItems := (m.height - 6) / 4
+	if maxItems < 1 {
+		maxItems = 1
+	}
+
+	start := m.suggestCursor - maxItems/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxItems
+	if end > len(m.suggestFeeds) {
+		end = len(m.suggestFeeds)
+		start = end - maxItems
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	lines := []string{titleStr, ""}
+	for i := start; i < end; i++ {
+		f := m.suggestFeeds[i]
+		check := styleHeartEmpty.Render("[ ]")
+		if m.suggestSelected[i] {
+			check = styleHeart.Render("[✓]")
+		}
+		titleText := truncate(f.Title, m.width-12)
+		urlText := styleMeta.Render("    " + truncate(f.URL, m.width-12))
+		descText := ""
+		if f.Description != "" {
+			descText = styleSummary.Render("    " + truncate(f.Description, m.width-12))
+		}
+		if i == m.suggestCursor {
+			titleText = styleTitle.Render(titleText)
+		}
+		line := check + " " + titleText
+		if i == m.suggestCursor {
+			line = styleCursorBar.Render("▶") + " " + check + " " + titleText
+		} else {
+			line = "  " + check + " " + titleText
+		}
+		lines = append(lines, line, urlText)
+		if descText != "" {
+			lines = append(lines, descText)
+		}
+		lines = append(lines, "")
+	}
+	lines = append(lines, footer)
 	panel := styleFeedList.Width(m.width - 4).Render(strings.Join(lines, "\n"))
 	return panel
 }
 
 func (m *Model) renderFooter() string {
-	if m.mode == modeCommand {
+	if m.mode == modeCommand || m.mode == modeSuggestInput {
 		prompt := styleInput.Width(m.width - 4).Render(m.input.View())
 		return prompt
 	}
@@ -220,11 +354,7 @@ func (m *Model) renderFooter() string {
 		right := styleHelp.Render("esc clear")
 		return left + strings.Repeat(" ", max(0, m.width-visLen(left)-visLen(right))) + right
 	}
-	if m.mode == modeFeedList {
-		return ""
-	}
-	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  G newest  gg oldest  ^F/^B page  enter open  m read  /list  / cmd  q quit")
-	return help
+	return ""
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -282,6 +412,111 @@ func filterEmpty(ss ...string) []string {
 		}
 	}
 	return out
+}
+
+// renderDetailContent renders the full article detail for the right pane.
+func (m *Model) renderDetailContent() string {
+	if m.cursor >= len(m.articles) {
+		return ""
+	}
+	a := m.articles[m.cursor]
+	w := m.detailPaneWidth() - 2 // inner width (padding)
+	if w < 10 {
+		w = 10
+	}
+
+	var b strings.Builder
+
+	// Title (word-wrapped)
+	titleWrapped := wordWrap(a.Title, w)
+	b.WriteString(styleTitle.Render(titleWrapped))
+	b.WriteString("\n\n")
+
+	// If MCP result is available, show it instead of the normal summary.
+	if m.mcpResult != "" {
+		b.WriteString(styleSummary.Render(wordWrap(m.mcpResult, w)))
+		return lipgloss.NewStyle().Padding(0, 1).Render(b.String())
+	}
+
+	// Meta
+	b.WriteString(styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), w)))
+	b.WriteString("\n\n")
+
+	// Full summary
+	summary := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
+	if summary != "" {
+		b.WriteString(styleSummary.Render(wordWrap(summary, w)))
+		b.WriteString("\n\n")
+	}
+
+	// Link
+	if a.Link != "" {
+		b.WriteString(styleMeta.Render(truncate(a.Link, w)))
+		b.WriteString("\n\n")
+	} else {
+		b.WriteString("\n\n")
+	}
+
+	// Stock hint
+	if a.IsStocked {
+		b.WriteString(styleHelp.Render("space ") + styleHeart.Render("♥") + styleHelp.Render(" unstock  /  click ♥ to toggle"))
+	} else {
+		b.WriteString(styleHelp.Render("space ♡ stock  /  click ♥ to toggle"))
+	}
+
+	return lipgloss.NewStyle().Padding(0, 1).Render(b.String())
+}
+
+// wordWrap breaks s into lines of at most width runes, breaking at word boundaries.
+func wordWrap(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return s
+	}
+	var lines []string
+	var cur strings.Builder
+	curLen := 0
+	for _, w := range words {
+		wLen := utf8.RuneCountInString(w)
+		// If the word itself exceeds width, hard-wrap it character by character.
+		if wLen > width {
+			if curLen > 0 {
+				lines = append(lines, cur.String())
+				cur.Reset()
+				curLen = 0
+			}
+			runes := []rune(w)
+			for len(runes) > 0 {
+				chunk := runes
+				if len(chunk) > width {
+					chunk = runes[:width]
+				}
+				lines = append(lines, string(chunk))
+				runes = runes[len(chunk):]
+			}
+			continue
+		}
+		if curLen == 0 {
+			cur.WriteString(w)
+			curLen = wLen
+		} else if curLen+1+wLen <= width {
+			cur.WriteString(" ")
+			cur.WriteString(w)
+			curLen += 1 + wLen
+		} else {
+			lines = append(lines, cur.String())
+			cur.Reset()
+			cur.WriteString(w)
+			curLen = wLen
+		}
+	}
+	if curLen > 0 {
+		lines = append(lines, cur.String())
+	}
+	return strings.Join(lines, "\n")
 }
 
 // visLen returns the visual length of a styled string (strips ANSI escape codes).

@@ -63,6 +63,23 @@ func (p *Poller) PollFeed(ctx context.Context, f db.Feed) {
 	p.fetchFeed(ctx, f)
 }
 
+// PollAll immediately polls all registered feeds regardless of interval.
+func (p *Poller) PollAll(ctx context.Context) {
+	feeds, err := p.db.ListFeeds(nil)
+	if err != nil {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, f := range feeds {
+		wg.Add(1)
+		go func(feed db.Feed) {
+			defer wg.Done()
+			p.fetchFeed(ctx, feed)
+		}(f)
+	}
+	wg.Wait()
+}
+
 func (p *Poller) refreshAll(ctx context.Context) {
 	feeds, err := p.db.ListFeeds(nil)
 	if err != nil {

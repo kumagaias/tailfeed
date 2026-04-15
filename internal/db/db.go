@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -57,6 +58,11 @@ func configDir() (string, error) {
 }
 
 func (d *DB) migrate() error {
+	// Ensure the tracking table exists.
+	if _, err := d.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
 	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		return err
@@ -65,12 +71,24 @@ func (d *DB) migrate() error {
 		return entries[i].Name() < entries[j].Name()
 	})
 	for _, e := range entries {
+		var applied int
+		_ = d.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE name = ?`, e.Name()).Scan(&applied)
+		if applied > 0 {
+			continue // already ran
+		}
 		data, err := migrationsFS.ReadFile("migrations/" + e.Name())
 		if err != nil {
 			return err
 		}
 		if _, err := d.Exec(string(data)); err != nil {
-			return fmt.Errorf("run migration %s: %w", e.Name(), err)
+			// "duplicate column name" means the migration already ran before
+			// the schema_migrations table existed — treat as applied.
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return fmt.Errorf("run migration %s: %w", e.Name(), err)
+			}
+		}
+		if _, err := d.Exec(`INSERT INTO schema_migrations (name) VALUES (?)`, e.Name()); err != nil {
+			return fmt.Errorf("record migration %s: %w", e.Name(), err)
 		}
 	}
 	return nil
