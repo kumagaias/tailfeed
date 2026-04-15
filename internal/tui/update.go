@@ -126,15 +126,12 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, textinput.Blink
 
 	case key.Matches(msg, keys.Left):
-		if m.cursor > 0 {
-			m.cursor--
-			m.detailOpen = true
-			m.resizeViewport()
-			m.syncViewportToCursor()
-			m.updateDetailContent()
-		} else if m.detailOpen {
+		if m.detailOpen {
 			m.detailOpen = false
 			m.resizeViewport()
+		} else if m.cursor > 0 {
+			m.cursor--
+			m.syncViewportToCursor()
 		}
 
 	case key.Matches(msg, keys.Right):
