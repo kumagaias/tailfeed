@@ -54,7 +54,9 @@ type Model struct {
 	detailVP   viewport.Model
 
 	// feedListItems holds rendered lines for the feed list overlay.
-	feedListItems []string
+	feedListItems  []string
+	feedListFeeds  []db.Feed
+	feedListCursor int
 
 	// pendingG is true after a single "g" press, waiting for a second to form "gg".
 	pendingG bool

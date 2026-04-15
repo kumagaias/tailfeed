@@ -18,6 +18,7 @@ type keyMap struct {
 	Confirm    key.Binding
 	Cancel     key.Binding
 	ViewDetail key.Binding // v — toggle detail pane
+	Delete     key.Binding // d — delete selected feed in list overlay
 }
 
 var keys = keyMap{
@@ -79,5 +80,9 @@ var keys = keyMap{
 	ViewDetail: key.NewBinding(
 		key.WithKeys("v"),
 		key.WithHelp("v", "detail"),
+	),
+	Delete: key.NewBinding(
+		key.WithKeys("d"),
+		key.WithHelp("d", "delete feed"),
 	),
 }

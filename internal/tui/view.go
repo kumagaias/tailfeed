@@ -193,13 +193,19 @@ var styleFeedList = lipgloss.NewStyle().
 func (m *Model) renderFeedList() string {
 	title := styleCursorBar.Render(fmt.Sprintf("Registered feeds (%d)", len(m.feedListItems)))
 	lines := []string{title, ""}
-	for _, item := range m.feedListItems {
-		lines = append(lines, "  "+truncate(item, m.width-8))
+	for i, item := range m.feedListItems {
+		prefix := "  "
+		text := truncate(item, m.width-10)
+		if i == m.feedListCursor {
+			prefix = styleCursorBar.Render("▶ ")
+			text = styleTitle.Render(text)
+		}
+		lines = append(lines, prefix+text)
 	}
 	if len(m.feedListItems) == 0 {
 		lines = append(lines, styleMeta.Render("  No feeds registered."))
 	}
-	lines = append(lines, "", styleHelp.Render("  esc / q  close"))
+	lines = append(lines, "", styleHelp.Render("  ↑↓/jk select  d delete  esc/q close"))
 	panel := styleFeedList.Width(m.width - 4).Render(strings.Join(lines, "\n"))
 	return panel
 }

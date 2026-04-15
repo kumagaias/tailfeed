@@ -334,9 +334,17 @@ func (m *Model) cmdGroupNew(args []string) string {
 }
 
 func (m *Model) cmdList() string {
+	m.reloadFeedList()
+	m.feedListCursor = 0
+	m.mode = modeFeedList
+	return ""
+}
+
+// reloadFeedList refreshes feedListItems and feedListFeeds without touching cursor or mode.
+func (m *Model) reloadFeedList() {
 	feeds, err := m.db.ListFeeds(nil)
 	if err != nil {
-		return "error: " + err.Error()
+		return
 	}
 	groups, _ := m.db.ListGroups()
 	groupName := map[int64]string{}
@@ -360,15 +368,42 @@ func (m *Model) cmdList() string {
 	}
 
 	m.feedListItems = items
-	m.mode = modeFeedList
-	return ""
+	m.feedListFeeds = feeds
 }
 
 // updateFeedList handles key events when the feed list overlay is open.
 func (m *Model) updateFeedList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if key.Matches(msg, keys.Cancel) || key.Matches(msg, keys.Quit) {
+	switch {
+	case key.Matches(msg, keys.Cancel) || key.Matches(msg, keys.Quit):
 		m.mode = modeNormal
 		m.feedListItems = nil
+		m.feedListFeeds = nil
+		m.feedListCursor = 0
+
+	case key.Matches(msg, keys.Up):
+		if m.feedListCursor > 0 {
+			m.feedListCursor--
+		}
+
+	case key.Matches(msg, keys.Down):
+		if m.feedListCursor < len(m.feedListItems)-1 {
+			m.feedListCursor++
+		}
+
+	case key.Matches(msg, keys.Delete):
+		if m.feedListCursor < len(m.feedListFeeds) {
+			f := m.feedListFeeds[m.feedListCursor]
+			if err := m.db.RemoveFeed(f.URL); err != nil {
+				m.status = "error: " + err.Error()
+			} else {
+				m.reloadFeedList()
+				if m.feedListCursor >= len(m.feedListItems) {
+					m.feedListCursor = max(0, len(m.feedListItems)-1)
+				}
+				_ = m.reloadArticles()
+				m.viewport.SetContent(m.renderArticles())
+			}
+		}
 	}
 	return m, nil
 }
