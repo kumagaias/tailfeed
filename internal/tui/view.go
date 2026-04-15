@@ -48,7 +48,8 @@ var (
 			Foreground(lipgloss.Color("12")).
 			Bold(true)
 
-	styleHeart = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	styleHeart      = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+	styleHeartEmpty = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 
 	styleTitle = lipgloss.NewStyle().Bold(true)
 
@@ -168,25 +169,18 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 
 	// ── Line 1: title ──────────────────────────────────────────────────────
 	title := truncate(a.Title, inner)
-	var indicator string
-	switch {
-	case selected && a.IsStocked:
-		indicator = styleCursorBar.Render("▶") + styleHeart.Render("♥")
+	cursor := " "
+	if selected {
+		cursor = styleCursorBar.Render("▶")
 		title = styleCursorBar.Render(title)
-	case selected:
-		indicator = styleCursorBar.Render("▶ ")
-		title = styleCursorBar.Render(title)
-	case a.IsStocked:
-		indicator = styleHeart.Render("♥ ")
-		if !a.IsRead {
-			title = styleTitle.Render(title)
-		}
-	default:
-		indicator = "  "
-		if !a.IsRead {
-			title = styleTitle.Render(title)
-		}
+	} else if !a.IsRead {
+		title = styleTitle.Render(title)
 	}
+	heart := styleHeartEmpty.Render("♡")
+	if a.IsStocked {
+		heart = styleHeart.Render("♥")
+	}
+	indicator := cursor + heart
 
 	// ── Line 2: meta ────────────────────────────────────────────────────────
 	meta := styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))
