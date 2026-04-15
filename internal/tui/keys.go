@@ -7,8 +7,9 @@ type keyMap struct {
 	Down       key.Binding
 	Left       key.Binding
 	Right      key.Binding
-	PrevGroup  key.Binding // [
-	NextGroup  key.Binding // ]
+	PrevGroup  key.Binding // [ ^ H shift+left
+	NextGroup  key.Binding // ] $ L shift+right
+	Stock      key.Binding // space
 	GotoBottom key.Binding // Shift+G
 	GotoTopG   key.Binding // first g (gg detection)
 	PageDown   key.Binding // Ctrl+F
@@ -41,12 +42,16 @@ var keys = keyMap{
 		key.WithHelp("→/l", "next article"),
 	),
 	PrevGroup: key.NewBinding(
-		key.WithKeys("["),
-		key.WithHelp("[", "prev group"),
+		key.WithKeys("[", "^", "H", "shift+left"),
+		key.WithHelp("[/^/H", "prev group"),
 	),
 	NextGroup: key.NewBinding(
-		key.WithKeys("]"),
-		key.WithHelp("]", "next group"),
+		key.WithKeys("]", "$", "L", "shift+right"),
+		key.WithHelp("]/$/L", "next group"),
+	),
+	Stock: key.NewBinding(
+		key.WithKeys(" "),
+		key.WithHelp("space", "stock"),
 	),
 	GotoBottom: key.NewBinding(
 		key.WithKeys("G"),

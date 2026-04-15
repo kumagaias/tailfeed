@@ -78,8 +78,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Y >= articleAreaTop {
 				contentY := msg.Y - articleAreaTop + m.viewport.YOffset
 				idx := contentY / linesPerSlot
+				lineInSlot := contentY % linesPerSlot
 				if idx >= 0 && idx < len(m.articles) {
-					if link := m.articles[idx].Link; link != "" {
+					// Click on the indicator/heart position (title line, col 2) → toggle stock.
+					if lineInSlot == 1 && msg.X == 2 {
+						_ = m.db.ToggleStock(m.articles[idx].ID)
+						_ = m.reloadArticles()
+						m.viewport.SetContent(m.renderArticles())
+						m.updateDetailContent()
+					} else if link := m.articles[idx].Link; link != "" {
 						_ = openBrowser(link)
 					}
 				}
@@ -218,6 +225,14 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			_ = m.reloadArticles()
 			m.viewport.SetContent(m.renderArticles())
 		}
+
+	case key.Matches(msg, keys.Stock):
+		if m.cursor < len(m.articles) {
+			_ = m.db.ToggleStock(m.articles[m.cursor].ID)
+			_ = m.reloadArticles()
+			m.viewport.SetContent(m.renderArticles())
+			m.updateDetailContent()
+		}
 	}
 	return m, nil
 }
@@ -283,12 +298,14 @@ func (m *Model) centerViewportOnCursor() {
 }
 
 func (m *Model) contentHeight() int {
-	// Fixed chrome: header(1) + tabbar(1) + separator(1) = 3 lines
-	// Footer: inputBoxHeight when command mode, 1 line otherwise
+	// Rows consumed outside the viewport:
+	//   header\n + tabbar\n + separator\n  = 3 rows above
+	//   \n (before footer) + footer        = 2 rows below  → total chrome = 5
+	// Command mode: footer = inputBoxHeight rows instead of 1
 	if m.mode == modeCommand {
-		return m.height - 3 - inputBoxHeight
+		return m.height - 4 - inputBoxHeight
 	}
-	return m.height - 3 - 1
+	return m.height - 5
 }
 
 func (m *Model) resizeViewport() {

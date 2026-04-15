@@ -30,10 +30,11 @@ const linesPerSlot = linesPerCard + 1
 // inputBoxHeight is the height of the command input box including its border.
 const inputBoxHeight = 3 // border-top + content + border-bottom
 
-// groupTab is the "All" virtual tab plus real DB groups.
+// groupTab is the "All" virtual tab, the "♥ Stock" virtual tab, or a real DB group.
 type groupTab struct {
-	id   *int64 // nil = "All"
-	name string
+	id      *int64 // nil for virtual tabs
+	name    string
+	isStock bool
 }
 
 // Model is the root Bubble Tea model.
@@ -93,7 +94,10 @@ func (m *Model) reloadTabs() error {
 	if err != nil {
 		return err
 	}
-	tabs := []groupTab{{id: nil, name: "All"}}
+	tabs := []groupTab{
+		{name: "All"},
+		{name: "♥ Stock", isStock: true},
+	}
 	for _, g := range groups {
 		gCopy := g
 		tabs = append(tabs, groupTab{id: &gCopy.ID, name: g.Name})
@@ -106,16 +110,23 @@ func (m *Model) reloadTabs() error {
 }
 
 func (m *Model) reloadArticles() error {
-	var groupID *int64
-	if m.tabIdx > 0 && m.tabIdx < len(m.tabs) {
-		groupID = m.tabs[m.tabIdx].id
+	var (
+		articles []db.Article
+		err      error
+	)
+	if m.tabIdx < len(m.tabs) && m.tabs[m.tabIdx].isStock {
+		articles, err = m.db.ListStockedArticles(articlesLimit)
+	} else {
+		var groupID *int64
+		if m.tabIdx > 0 && m.tabIdx < len(m.tabs) && !m.tabs[m.tabIdx].isStock {
+			groupID = m.tabs[m.tabIdx].id
+		}
+		articles, err = m.db.ListArticles(groupID, articlesLimit)
 	}
-	articles, err := m.db.ListArticles(groupID, articlesLimit)
 	if err != nil {
 		return err
 	}
 	m.articles = articles
-	// clamp cursor; caller is responsible for positioning after reload
 	if m.cursor >= len(m.articles) {
 		m.cursor = max(0, len(m.articles)-1)
 	}
@@ -137,7 +148,7 @@ func (m *Model) jumpToOldest() {
 }
 
 func (m *Model) currentGroupID() *int64 {
-	if m.tabIdx == 0 || m.tabIdx >= len(m.tabs) {
+	if m.tabIdx == 0 || m.tabIdx >= len(m.tabs) || m.tabs[m.tabIdx].isStock {
 		return nil
 	}
 	return m.tabs[m.tabIdx].id
@@ -146,7 +157,7 @@ func (m *Model) currentGroupID() *int64 {
 // listWidth returns the width of the article list pane.
 func (m *Model) listWidth() int {
 	if m.detailOpen {
-		return m.width * 2 / 5
+		return m.width / 2
 	}
 	return m.width
 }

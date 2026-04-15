@@ -48,6 +48,8 @@ var (
 			Foreground(lipgloss.Color("12")).
 			Bold(true)
 
+	styleHeart = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
+
 	styleTitle = lipgloss.NewStyle().Bold(true)
 
 	styleMeta = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -159,12 +161,24 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 
 	// ── Line 1: title ──────────────────────────────────────────────────────
 	title := truncate(a.Title, inner)
-	indicator := "  "
-	if selected {
+	var indicator string
+	switch {
+	case selected && a.IsStocked:
+		indicator = styleCursorBar.Render("▶") + styleHeart.Render("♥")
+		title = styleCursorBar.Render(title)
+	case selected:
 		indicator = styleCursorBar.Render("▶ ")
 		title = styleCursorBar.Render(title)
-	} else if !a.IsRead {
-		title = styleTitle.Render(title)
+	case a.IsStocked:
+		indicator = styleHeart.Render("♥ ")
+		if !a.IsRead {
+			title = styleTitle.Render(title)
+		}
+	default:
+		indicator = "  "
+		if !a.IsRead {
+			title = styleTitle.Render(title)
+		}
 	}
 
 	// ── Line 2: meta ────────────────────────────────────────────────────────
@@ -240,7 +254,7 @@ func (m *Model) renderFooter() string {
 	if m.mode == modeFeedList {
 		return ""
 	}
-	help := styleHelp.Render("↑↓/jk move  ←→/hl detail  [/] groups  G newest  gg oldest  ^F/^B page  v detail  enter open  m read  / cmd  q quit")
+	help := styleHelp.Render("↑↓/jk move  ←→/hl detail  [^H groups  v detail  space ♥  G newest  gg oldest  ^F/^B page  enter open  m read  / cmd  q quit")
 	return help
 }
 
@@ -333,6 +347,16 @@ func (m *Model) renderDetailContent() string {
 	// Link
 	if a.Link != "" {
 		b.WriteString(styleMeta.Render(truncate(a.Link, w)))
+		b.WriteString("\n\n")
+	} else {
+		b.WriteString("\n\n")
+	}
+
+	// Stock hint
+	if a.IsStocked {
+		b.WriteString(styleHelp.Render("space ") + styleHeart.Render("♥") + styleHelp.Render(" unstock  /  click ♥ to toggle"))
+	} else {
+		b.WriteString(styleHelp.Render("space ♡ stock  /  click ♥ to toggle"))
 	}
 
 	return lipgloss.NewStyle().Padding(0, 1).Render(b.String())
