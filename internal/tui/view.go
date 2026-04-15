@@ -113,7 +113,14 @@ func (m *Model) renderTabBar() string {
 			parts = append(parts, styleTabInactive.Render(label))
 		}
 	}
-	return strings.Join(parts, " ")
+	tabs := strings.Join(parts, " ")
+
+	hint := styleHelp.Render("[^H⇧←  groups  ]$L⇧→")
+	pad := m.width - visLen(tabs) - visLen(hint)
+	if pad > 0 {
+		tabs += strings.Repeat(" ", pad) + hint
+	}
+	return tabs
 }
 
 // tabXRanges returns the [start, end) X column range of each tab in the tab bar.
