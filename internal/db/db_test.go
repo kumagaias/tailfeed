@@ -9,10 +9,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// openTestDB creates an in-memory SQLite DB for tests.
+// openTestDB creates a file-based temp SQLite DB and runs migrations.
 func openTestDB(t *testing.T) *db.DB {
 	t.Helper()
-	// Use a file-based temp DB so the embedded migration SQL runs properly.
 	dir := t.TempDir()
 	dsn := filepath.Join(dir, "test.db") + "?_foreign_keys=on"
 	sqlDB, err := sql.Open("sqlite", dsn)
@@ -27,10 +26,11 @@ func openTestDB(t *testing.T) *db.DB {
 	return d
 }
 
+// ── Group ─────────────────────────────────────────────────────────────────────
+
 func TestGroupCRUD(t *testing.T) {
 	d := openTestDB(t)
 
-	// Create
 	g, err := d.CreateGroup("tech")
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
@@ -39,7 +39,6 @@ func TestGroupCRUD(t *testing.T) {
 		t.Errorf("expected name=tech, got %q", g.Name)
 	}
 
-	// List
 	groups, err := d.ListGroups()
 	if err != nil {
 		t.Fatalf("ListGroups: %v", err)
@@ -48,12 +47,11 @@ func TestGroupCRUD(t *testing.T) {
 		t.Fatalf("expected 1 group, got %d", len(groups))
 	}
 
-	// Duplicate name should fail
+	// duplicate name must fail
 	if _, err := d.CreateGroup("tech"); err == nil {
 		t.Error("expected error for duplicate group name")
 	}
 
-	// Delete
 	if err := d.DeleteGroup(g.ID); err != nil {
 		t.Fatalf("DeleteGroup: %v", err)
 	}
@@ -76,34 +74,53 @@ func TestMaxGroups(t *testing.T) {
 	}
 }
 
+func TestGetGroupByName(t *testing.T) {
+	d := openTestDB(t)
+	_, _ = d.CreateGroup("sec")
+
+	g, err := d.GetGroupByName("sec")
+	if err != nil {
+		t.Fatalf("GetGroupByName: %v", err)
+	}
+	if g.Name != "sec" {
+		t.Errorf("expected name=sec, got %q", g.Name)
+	}
+
+	if _, err := d.GetGroupByName("nonexistent"); err == nil {
+		t.Error("expected ErrGroupNotFound for missing group")
+	}
+}
+
+// ── Feed ──────────────────────────────────────────────────────────────────────
+
 func TestFeedCRUD(t *testing.T) {
 	d := openTestDB(t)
 	g, _ := d.CreateGroup("news")
 
-	// Add feed without group
 	f, err := d.AddFeed("https://example.com/feed.rss", nil)
 	if err != nil {
-		t.Fatalf("AddFeed: %v", err)
+		t.Fatalf("AddFeed (ungrouped): %v", err)
 	}
 	if f.URL != "https://example.com/feed.rss" {
 		t.Errorf("unexpected URL: %s", f.URL)
 	}
+	if f.GroupID != nil {
+		t.Errorf("expected nil group, got %v", f.GroupID)
+	}
 
-	// Add feed with group
 	f2, err := d.AddFeed("https://news.example.com/rss", &g.ID)
 	if err != nil {
-		t.Fatalf("AddFeed with group: %v", err)
+		t.Fatalf("AddFeed (grouped): %v", err)
 	}
 	if f2.GroupID == nil || *f2.GroupID != g.ID {
 		t.Errorf("expected group %d, got %v", g.ID, f2.GroupID)
 	}
 
-	// Duplicate URL should fail
+	// duplicate URL must fail
 	if _, err := d.AddFeed("https://example.com/feed.rss", nil); err == nil {
 		t.Error("expected ErrFeedAlreadyExists, got nil")
 	}
 
-	// Remove
 	if err := d.RemoveFeed("https://example.com/feed.rss"); err != nil {
 		t.Fatalf("RemoveFeed: %v", err)
 	}
@@ -112,6 +129,57 @@ func TestFeedCRUD(t *testing.T) {
 		t.Errorf("expected 1 feed after remove, got %d", len(feeds))
 	}
 }
+
+func TestFeedListFilterByGroup(t *testing.T) {
+	d := openTestDB(t)
+	g1, _ := d.CreateGroup("a")
+	g2, _ := d.CreateGroup("b")
+
+	_, _ = d.AddFeed("https://feed1.com/rss", &g1.ID)
+	_, _ = d.AddFeed("https://feed2.com/rss", &g1.ID)
+	_, _ = d.AddFeed("https://feed3.com/rss", &g2.ID)
+
+	all, _ := d.ListFeeds(nil)
+	if len(all) != 3 {
+		t.Errorf("expected 3 total feeds, got %d", len(all))
+	}
+	inG1, _ := d.ListFeeds(&g1.ID)
+	if len(inG1) != 2 {
+		t.Errorf("expected 2 feeds in group a, got %d", len(inG1))
+	}
+}
+
+func TestMaxFeedsPerGroup(t *testing.T) {
+	d := openTestDB(t)
+	g, _ := d.CreateGroup("big")
+	for i := range db.MaxFeedsPerGroup {
+		url := "https://feed" + itoa(i) + ".example.com/rss"
+		if _, err := d.AddFeed(url, &g.ID); err != nil {
+			t.Fatalf("AddFeed %d: %v", i, err)
+		}
+	}
+	if _, err := d.AddFeed("https://overflow.example.com/rss", &g.ID); err == nil {
+		t.Error("expected ErrMaxFeedsPerGroup, got nil")
+	}
+}
+
+func TestUpdateFeedMeta(t *testing.T) {
+	d := openTestDB(t)
+	f, _ := d.AddFeed("https://example.com/rss", nil)
+
+	if err := d.UpdateFeedMeta(f.ID, "Example Blog", "https://example.com"); err != nil {
+		t.Fatalf("UpdateFeedMeta: %v", err)
+	}
+	feeds, _ := d.ListFeeds(nil)
+	if feeds[0].Title != "Example Blog" {
+		t.Errorf("expected title=Example Blog, got %q", feeds[0].Title)
+	}
+	if feeds[0].LastFetchedAt == nil {
+		t.Error("expected LastFetchedAt to be set after UpdateFeedMeta")
+	}
+}
+
+// ── Article ───────────────────────────────────────────────────────────────────
 
 func TestArticleSaveAndList(t *testing.T) {
 	d := openTestDB(t)
@@ -132,7 +200,7 @@ func TestArticleSaveAndList(t *testing.T) {
 		t.Error("expected saved=true for new article")
 	}
 
-	// Duplicate should be ignored
+	// duplicate must be ignored
 	saved, err = d.SaveArticle(a)
 	if err != nil {
 		t.Fatalf("SaveArticle duplicate: %v", err)
@@ -141,7 +209,7 @@ func TestArticleSaveAndList(t *testing.T) {
 		t.Error("expected saved=false for duplicate")
 	}
 
-	articles, err := d.ListArticles(nil, 50)
+	articles, err := d.ListArticles(nil, 50, 0)
 	if err != nil {
 		t.Fatalf("ListArticles: %v", err)
 	}
@@ -151,4 +219,70 @@ func TestArticleSaveAndList(t *testing.T) {
 	if articles[0].Title != "Hello World" {
 		t.Errorf("unexpected title: %s", articles[0].Title)
 	}
+}
+
+func TestArticleMarkRead(t *testing.T) {
+	d := openTestDB(t)
+	f, _ := d.AddFeed("https://example.com/rss", nil)
+	a := &db.Article{FeedID: f.ID, GUID: "g1", Title: "T1", Link: "https://example.com/1"}
+	_, _ = d.SaveArticle(a)
+
+	articles, _ := d.ListArticles(nil, 10, 0)
+	if articles[0].IsRead {
+		t.Fatal("article should be unread initially")
+	}
+
+	if err := d.MarkRead(articles[0].ID); err != nil {
+		t.Fatalf("MarkRead: %v", err)
+	}
+	articles, _ = d.ListArticles(nil, 10, 0)
+	if !articles[0].IsRead {
+		t.Error("article should be read after MarkRead")
+	}
+}
+
+func TestArticleListFilterByGroup(t *testing.T) {
+	d := openTestDB(t)
+	g, _ := d.CreateGroup("tech")
+	f1, _ := d.AddFeed("https://feed1.com/rss", &g.ID)
+	f2, _ := d.AddFeed("https://feed2.com/rss", nil)
+
+	_, _ = d.SaveArticle(&db.Article{FeedID: f1.ID, GUID: "a1", Title: "In group"})
+	_, _ = d.SaveArticle(&db.Article{FeedID: f2.ID, GUID: "a2", Title: "Not in group"})
+
+	all, _ := d.ListArticles(nil, 50, 0)
+	if len(all) != 2 {
+		t.Errorf("expected 2 total articles, got %d", len(all))
+	}
+	inGroup, _ := d.ListArticles(&g.ID, 50)
+	if len(inGroup) != 1 {
+		t.Errorf("expected 1 article in group, got %d", len(inGroup))
+	}
+	if inGroup[0].Title != "In group" {
+		t.Errorf("unexpected title: %s", inGroup[0].Title)
+	}
+}
+
+func TestArticleOrderedOldestFirst(t *testing.T) {
+	d := openTestDB(t)
+	f, _ := d.AddFeed("https://example.com/rss", nil)
+
+	for i := range 5 {
+		_, _ = d.SaveArticle(&db.Article{
+			FeedID: f.ID,
+			GUID:   "g" + itoa(i),
+			Title:  "Article " + itoa(i),
+		})
+	}
+	articles, _ := d.ListArticles(nil, 50, 0)
+	for i, a := range articles {
+		expected := "Article " + itoa(i)
+		if a.Title != expected {
+			t.Errorf("position %d: expected %q, got %q", i, expected, a.Title)
+		}
+	}
+}
+
+func itoa(n int) string {
+	return string(rune('0' + n))
 }

@@ -81,6 +81,8 @@ func (m *Model) View() string {
 	b.WriteString("\n")
 	if m.mode == modeFeedList {
 		b.WriteString(m.renderFeedList())
+	} else if m.mode == modeSuggest {
+		b.WriteString(m.renderSuggestList())
 	} else if m.detailOpen && m.detailPaneWidth() > 0 {
 		h := m.contentHeight()
 		divider := strings.Repeat("│\n", h-1) + "│"
@@ -101,7 +103,13 @@ func (m *Model) View() string {
 func (m *Model) renderHeader() string {
 	brand := styleBrand.Render("tailfeed")
 	count := fmt.Sprintf("  %d articles", len(m.articles))
-	return brand + styleMeta.Render(count)
+	left := brand + styleMeta.Render(count)
+	help := styleHelp.Render("↑↓/jk move  ←→/hl detail  space ♥  G/gg  [ ] groups  / cmd  q quit")
+	pad := m.width - visLen(left) - visLen(help)
+	if pad > 0 {
+		return left + strings.Repeat(" ", pad) + help
+	}
+	return left
 }
 
 func (m *Model) renderTabBar() string {
@@ -116,10 +124,18 @@ func (m *Model) renderTabBar() string {
 	}
 	tabs := strings.Join(parts, " ")
 
-	hint := styleHelp.Render("[^H⇧←  groups  ]$L⇧→")
-	pad := m.width - visLen(tabs) - visLen(hint)
+	var searchText string
+	if m.mode == modeFind && m.input.Value() != "" {
+		searchText = "🔍 " + m.input.Value() + "▌"
+	} else if m.mode == modeFind {
+		searchText = "🔍 ▌"
+	} else {
+		searchText = "🔍 search..."
+	}
+	right := styleInput.Render(searchText)
+	pad := m.width - lipgloss.Width(tabs) - lipgloss.Width(right)
 	if pad > 0 {
-		tabs += strings.Repeat(" ", pad) + hint
+		tabs += strings.Repeat(" ", pad) + right
 	}
 	return tabs
 }
@@ -267,8 +283,69 @@ func (m *Model) renderFeedList() string {
 	return panel
 }
 
+func (m *Model) renderSuggestList() string {
+	selected := len(m.suggestSelected)
+	var titleStr string
+	if selected > 0 {
+		titleStr = styleCursorBar.Render(fmt.Sprintf("Suggested feeds (%d)  — %d selected", len(m.suggestFeeds), selected))
+	} else {
+		titleStr = styleCursorBar.Render(fmt.Sprintf("Suggested feeds (%d)", len(m.suggestFeeds)))
+	}
+	footer := styleHelp.Render("  ↑↓/jk move  space select  enter add selected (or current)  esc cancel")
+	// 4 lines per item (title + url + desc + blank), 4 lines overhead
+	maxItems := (m.height - 6) / 4
+	if maxItems < 1 {
+		maxItems = 1
+	}
+
+	start := m.suggestCursor - maxItems/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxItems
+	if end > len(m.suggestFeeds) {
+		end = len(m.suggestFeeds)
+		start = end - maxItems
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	lines := []string{titleStr, ""}
+	for i := start; i < end; i++ {
+		f := m.suggestFeeds[i]
+		check := styleHeartEmpty.Render("[ ]")
+		if m.suggestSelected[i] {
+			check = styleHeart.Render("[✓]")
+		}
+		titleText := truncate(f.Title, m.width-12)
+		urlText := styleMeta.Render("    " + truncate(f.URL, m.width-12))
+		descText := ""
+		if f.Description != "" {
+			descText = styleSummary.Render("    " + truncate(f.Description, m.width-12))
+		}
+		if i == m.suggestCursor {
+			titleText = styleTitle.Render(titleText)
+		}
+		line := check + " " + titleText
+		if i == m.suggestCursor {
+			line = styleCursorBar.Render("▶") + " " + check + " " + titleText
+		} else {
+			line = "  " + check + " " + titleText
+		}
+		lines = append(lines, line, urlText)
+		if descText != "" {
+			lines = append(lines, descText)
+		}
+		lines = append(lines, "")
+	}
+	lines = append(lines, footer)
+	panel := styleFeedList.Width(m.width - 4).Render(strings.Join(lines, "\n"))
+	return panel
+}
+
 func (m *Model) renderFooter() string {
-	if m.mode == modeCommand {
+	if m.mode == modeCommand || m.mode == modeSuggestInput {
 		prompt := styleInput.Width(m.width - 4).Render(m.input.View())
 		return prompt
 	}
@@ -277,11 +354,7 @@ func (m *Model) renderFooter() string {
 		right := styleHelp.Render("esc clear")
 		return left + strings.Repeat(" ", max(0, m.width-visLen(left)-visLen(right))) + right
 	}
-	if m.mode == modeFeedList {
-		return ""
-	}
-	help := styleHelp.Render("↑↓/jk move  ←→/hl detail  [^H groups  v detail  space ♥  G newest  gg oldest  ^F/^B page  enter open  m read  / cmd  q quit")
-	return help
+	return ""
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -359,6 +432,12 @@ func (m *Model) renderDetailContent() string {
 	b.WriteString(styleTitle.Render(titleWrapped))
 	b.WriteString("\n\n")
 
+	// If MCP result is available, show it instead of the normal summary.
+	if m.mcpResult != "" {
+		b.WriteString(styleSummary.Render(wordWrap(m.mcpResult, w)))
+		return lipgloss.NewStyle().Padding(0, 1).Render(b.String())
+	}
+
 	// Meta
 	b.WriteString(styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), w)))
 	b.WriteString("\n\n")
@@ -402,6 +481,24 @@ func wordWrap(s string, width int) string {
 	curLen := 0
 	for _, w := range words {
 		wLen := utf8.RuneCountInString(w)
+		// If the word itself exceeds width, hard-wrap it character by character.
+		if wLen > width {
+			if curLen > 0 {
+				lines = append(lines, cur.String())
+				cur.Reset()
+				curLen = 0
+			}
+			runes := []rune(w)
+			for len(runes) > 0 {
+				chunk := runes
+				if len(chunk) > width {
+					chunk = runes[:width]
+				}
+				lines = append(lines, string(chunk))
+				runes = runes[len(chunk):]
+			}
+			continue
+		}
 		if curLen == 0 {
 			cur.WriteString(w)
 			curLen = wLen

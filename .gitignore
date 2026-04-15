@@ -1,0 +1,16 @@
+# Binaries
+tailfeed
+*.exe
+
+# Database
+*.db
+*.sqlite
+
+# Generated HTML reports
+summary-*.html
+
+# OS
+.DS_Store
+
+# Go
+vendor/

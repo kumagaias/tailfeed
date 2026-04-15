@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 
 	"github.com/kumagaias/tailfeed/internal/db"
 	"github.com/kumagaias/tailfeed/internal/feed"
+	"github.com/kumagaias/tailfeed/internal/mcp"
 	"github.com/kumagaias/tailfeed/internal/tui"
 )
 
@@ -42,7 +46,7 @@ func rootCmd() *cobra.Command {
 	}
 	root.Flags().BoolVarP(&follow, "follow", "f", false, "stream new articles to stdout (tail -f style)")
 	root.Flags().StringVarP(&groupName, "group", "g", "", "filter by group name (use with -f)")
-	root.AddCommand(addCmd(), removeCmd(), listCmd())
+	root.AddCommand(addCmd(), removeCmd(), listCmd(), mcpCmd(), summaryCmd())
 	return root
 }
 
@@ -106,7 +110,7 @@ func runFollow(groupName string) error {
 		g, _ := database.GetGroupByName(groupName)
 		recentGroupID = &g.ID
 	}
-	recent, err := database.ListArticles(recentGroupID, 10)
+	recent, err := database.ListRecentArticles(recentGroupID, 10)
 	if err == nil && len(recent) > 0 {
 		fmt.Fprintln(os.Stderr, "── recent articles ──────────────────────────────────────────")
 		for _, a := range recent {
@@ -139,6 +143,21 @@ func runFollow(groupName string) error {
 			}
 			printArticle(db.Article(a))
 		}
+	}
+}
+
+func openBrowserCLI(url string) {
+	var cmd string
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = "open"
+	case "linux":
+		cmd = "xdg-open"
+	default:
+		cmd = "start"
+	}
+	if err := exec.Command(cmd, url).Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "open browser: %v\n", err)
 	}
 }
 
@@ -272,6 +291,139 @@ func listCmd() *cobra.Command {
 					title = f.URL
 				}
 				fmt.Printf("  %s\n    %s\n", title, f.URL)
+			}
+			return nil
+		},
+	}
+}
+
+// mcpCmd manages MCP server configuration.
+func mcpCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "mcp",
+		Short: "Manage MCP server configuration",
+	}
+
+	// mcp set <command> [args...] [--env KEY=VALUE] [--suggest-tool <tool>] [--summary-tool <tool>]
+	var envPairs []string
+	var language string
+	setCmd := &cobra.Command{
+		Use:   "set <command> [args...]",
+		Short: "Register the MCP server",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			cfg := &mcp.Config{Command: args[0], Args: args[1:], Language: language}
+			if len(envPairs) > 0 {
+				cfg.Env = make(map[string]string, len(envPairs))
+				for _, pair := range envPairs {
+					k, v, _ := strings.Cut(pair, "=")
+					cfg.Env[k] = v
+				}
+			}
+			if err := mcp.Save(cfg); err != nil {
+				return err
+			}
+			fmt.Printf("mcp: registered → %s\n", args[0])
+			return nil
+		},
+	}
+	setCmd.Flags().StringArrayVar(&envPairs, "env", nil, "environment variables (KEY=VALUE)")
+	setCmd.Flags().StringVar(&language, "language", "", "summary language (default: Japanese)")
+
+	// mcp unset
+	unsetCmd := &cobra.Command{
+		Use:   "unset",
+		Short: "Remove the MCP server configuration",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return mcp.Save(nil)
+		},
+	}
+
+	// mcp list
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "Show the configured MCP server",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			cfg, err := mcp.Load()
+			if err != nil {
+				return err
+			}
+			if cfg == nil {
+				fmt.Println("No MCP server configured.")
+				fmt.Println("Use: tailfeed mcp set <command> [args...]")
+				return nil
+			}
+			fmt.Printf("command:  %s %s\n", cfg.Command, strings.Join(cfg.Args, " "))
+			fmt.Printf("language: %s\n", cfg.SummaryLanguage())
+			if len(cfg.Env) > 0 {
+				fmt.Println("env:")
+				for k, v := range cfg.Env {
+					fmt.Printf("  %s=%s\n", k, v)
+				}
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(setCmd, unsetCmd, listCmd)
+	return cmd
+}
+
+// summaryCmd summarises today's articles via MCP and prints to stdout.
+func summaryCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "summary",
+		Short: "Summarise today's articles via MCP and print to stdout",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			cfg, err := mcp.Load()
+			if err != nil {
+				return err
+			}
+			if cfg == nil {
+				return fmt.Errorf("mcp not configured — run: tailfeed mcp set <command> [args...]")
+			}
+			database, err := db.Open()
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+
+			articles, err := database.ListTodayArticles()
+			if err != nil {
+				return err
+			}
+			if len(articles) == 0 {
+				fmt.Println("No articles today.")
+				return nil
+			}
+
+			var sb strings.Builder
+			for _, a := range articles {
+				sb.WriteString(fmt.Sprintf("## %s\nURL: %s\n%s\n\n", a.Title, a.Link, a.Summary))
+			}
+			fmt.Fprintf(os.Stderr, "Summarising %d articles…\n", len(articles))
+
+			text, err := mcp.Call(cfg, map[string]any{
+				"question": fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize today's %d articles in %s for a technical audience. For each article: one-line TL;DR, key technical points as bullet list. End with a "## Today's Signal" section: 2-3 sentences on trends worth watching. Be concise, skip fluff.`, len(articles), cfg.SummaryLanguage()),
+				"context":  sb.String(),
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Println(text)
+
+			// Generate HTML report.
+			path, err := tui.WriteSummaryHTML(text, articles)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "html: %v\n", err)
+				return nil
+			}
+			fmt.Fprintf(os.Stderr, "\nreport saved → file://%s\n", path)
+			fmt.Fprint(os.Stderr, "open in browser? [Y/n] ")
+			ans, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+			ans = strings.TrimSpace(ans)
+			if ans == "" || ans == "y" || ans == "Y" {
+				openBrowserCLI(path)
 			}
 			return nil
 		},
