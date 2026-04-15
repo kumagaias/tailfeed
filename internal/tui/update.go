@@ -22,7 +22,7 @@ type newArticleMsg db.Article
 // errMsg wraps an error for display.
 type errMsg struct{ err error }
 
-// listenForArticles converts poller channel into Bubble Tea messages.
+// listenForArticles converts the poller channel into a Bubble Tea command.
 func listenForArticles(ch <-chan feed.NewArticleMsg) tea.Cmd {
 	return func() tea.Msg {
 		a := <-ch
@@ -37,23 +37,34 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport = viewport.New(msg.Width, m.contentHeight())
+		// Start at newest (bottom)
+		m.cursor = max(0, len(m.articles)-1)
 		m.viewport.SetContent(m.renderArticles())
 		m.viewport.GotoBottom()
 		return m, nil
 
 	case newArticleMsg:
-		_ = m.reloadArticles()
 		atBottom := m.viewport.AtBottom()
-		m.viewport.SetContent(m.renderArticles())
+		_ = m.reloadArticles()
 		if atBottom {
+			// follow new articles like tail -f
+			m.cursor = max(0, len(m.articles)-1)
+			m.viewport.SetContent(m.renderArticles())
 			m.viewport.GotoBottom()
+		} else {
+			m.viewport.SetContent(m.renderArticles())
 		}
-		// keep listening
 		return m, listenForArticles(m.poller.Articles())
 
 	case errMsg:
 		m.status = "error: " + msg.err.Error()
 		return m, nil
+
+	case tea.MouseMsg:
+		// Delegate scroll events to viewport; other mouse events ignored.
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
 
 	case tea.KeyMsg:
 		if m.mode == modeCommand {
@@ -65,9 +76,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// gg detection: two consecutive "g" presses
+	if key.Matches(msg, keys.GotoTopG) {
+		if m.pendingG {
+			m.pendingG = false
+			m.jumpToOldest()
+			return m, nil
+		}
+		m.pendingG = true
+		return m, nil
+	}
+	m.pendingG = false // any other key cancels pending g
+
 	switch {
 	case key.Matches(msg, keys.Quit):
 		return m, tea.Quit
+
+	case key.Matches(msg, keys.GotoBottom):
+		m.jumpToNewest()
+
+	case key.Matches(msg, keys.PageDown):
+		m.viewport.HalfViewDown()
+
+	case key.Matches(msg, keys.PageUp):
+		m.viewport.HalfViewUp()
 
 	case key.Matches(msg, keys.Command):
 		m.mode = modeCommand
@@ -78,8 +110,8 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Left):
 		if m.tabIdx > 0 {
 			m.tabIdx--
-			m.cursor = 0
 			_ = m.reloadArticles()
+			m.cursor = max(0, len(m.articles)-1)
 			m.viewport.SetContent(m.renderArticles())
 			m.viewport.GotoBottom()
 		}
@@ -87,8 +119,8 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Right):
 		if m.tabIdx < len(m.tabs)-1 {
 			m.tabIdx++
-			m.cursor = 0
 			_ = m.reloadArticles()
+			m.cursor = max(0, len(m.articles)-1)
 			m.viewport.SetContent(m.renderArticles())
 			m.viewport.GotoBottom()
 		}
@@ -96,19 +128,18 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Up):
 		if m.cursor > 0 {
 			m.cursor--
-			m.syncViewport()
+			m.syncViewportToCursor()
 		}
 
 	case key.Matches(msg, keys.Down):
 		if m.cursor < len(m.articles)-1 {
 			m.cursor++
-			m.syncViewport()
+			m.syncViewportToCursor()
 		}
 
 	case key.Matches(msg, keys.Open):
 		if m.cursor < len(m.articles) {
-			link := m.articles[m.cursor].Link
-			if link != "" {
+			if link := m.articles[m.cursor].Link; link != "" {
 				_ = openBrowser(link)
 			}
 		}
@@ -145,7 +176,35 @@ func (m *Model) updateCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, tiCmd
 }
 
-// execCommand parses and runs a "/" command, returning a status message.
+// syncViewportToCursor re-renders and scrolls the viewport so the cursor card is visible.
+func (m *Model) syncViewportToCursor() {
+	m.viewport.SetContent(m.renderArticles())
+	if m.cursor < 0 || m.cursor >= len(m.cardOffsets) {
+		return
+	}
+	cardTop := m.cardOffsets[m.cursor]
+	var cardBottom int
+	if m.cursor+1 < len(m.cardOffsets) {
+		cardBottom = m.cardOffsets[m.cursor+1] - 1 // -1 for the blank separator line
+	} else {
+		// Last card: estimate from content line count
+		cardBottom = cardTop + 5
+	}
+
+	if cardTop < m.viewport.YOffset {
+		m.viewport.SetYOffset(cardTop)
+	} else if cardBottom >= m.viewport.YOffset+m.viewport.Height {
+		m.viewport.SetYOffset(cardBottom - m.viewport.Height + 1)
+	}
+}
+
+func (m *Model) contentHeight() int {
+	// header (1) + tab bar (1) + separator (1) + footer (1) = 4 fixed lines
+	return m.height - 4
+}
+
+// ── Command palette ───────────────────────────────────────────────────────────
+
 func (m *Model) execCommand(raw string) string {
 	parts := strings.Fields(raw)
 	if len(parts) == 0 {
@@ -179,13 +238,11 @@ func (m *Model) cmdAdd(args []string) string {
 	url := args[0]
 	groupID := m.currentGroupID()
 
-	// parse --group flag
 	for i, a := range args[1:] {
 		if a == "--group" && i+2 < len(args) {
-			name := args[i+2]
-			g, err := m.db.GetGroupByName(name)
+			g, err := m.db.GetGroupByName(args[i+2])
 			if err != nil {
-				return fmt.Sprintf("group %q not found", name)
+				return fmt.Sprintf("group %q not found", args[i+2])
 			}
 			groupID = &g.ID
 		}
@@ -238,23 +295,6 @@ func (m *Model) cmdGroupDel(args []string) string {
 	_ = m.reloadTabs()
 	_ = m.reloadArticles()
 	return fmt.Sprintf("deleted group %q", name)
-}
-
-func (m *Model) syncViewport() {
-	m.viewport.SetContent(m.renderArticles())
-	// scroll so cursor card is visible
-	lineHeight := cardHeight + 1
-	targetY := m.cursor * lineHeight
-	if targetY < m.viewport.YOffset {
-		m.viewport.SetYOffset(targetY)
-	} else if targetY+lineHeight > m.viewport.YOffset+m.viewport.Height {
-		m.viewport.SetYOffset(targetY + lineHeight - m.viewport.Height)
-	}
-}
-
-func (m *Model) contentHeight() int {
-	// header (1) + tab bar (1) + separator (1) + footer (2)
-	return m.height - 5
 }
 
 func openBrowser(url string) error {

@@ -14,7 +14,7 @@ type mode int
 
 const (
 	modeNormal  mode = iota
-	modeCommand      // "/" command palette active
+	modeCommand // "/" command palette active
 )
 
 const articlesLimit = 200
@@ -39,6 +39,13 @@ type Model struct {
 	viewport viewport.Model
 	input    textinput.Model
 	status   string // transient status message
+
+	// cardOffsets[i] is the line offset (0-based) at which card i starts in viewport content.
+	// Updated every time renderArticles() is called.
+	cardOffsets []int
+
+	// pendingG is true after a single "g" press, waiting for a second to form "gg".
+	pendingG bool
 }
 
 // New creates the initial TUI model.
@@ -93,10 +100,27 @@ func (m *Model) reloadArticles() error {
 		return err
 	}
 	m.articles = articles
+	// clamp cursor; caller is responsible for positioning after reload
 	if m.cursor >= len(m.articles) {
 		m.cursor = max(0, len(m.articles)-1)
 	}
 	return nil
+}
+
+// jumpToNewest moves the cursor to the newest article (last in ASC list) and scrolls to bottom.
+func (m *Model) jumpToNewest() {
+	if len(m.articles) > 0 {
+		m.cursor = len(m.articles) - 1
+	}
+	m.viewport.SetContent(m.renderArticles())
+	m.viewport.GotoBottom()
+}
+
+// jumpToOldest moves the cursor to the oldest article (first in ASC list) and scrolls to top.
+func (m *Model) jumpToOldest() {
+	m.cursor = 0
+	m.viewport.SetContent(m.renderArticles())
+	m.viewport.GotoTop()
 }
 
 func (m *Model) currentGroupID() *int64 {

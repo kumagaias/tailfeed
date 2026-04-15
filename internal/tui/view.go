@@ -11,8 +11,6 @@ import (
 	"github.com/kumagaias/tailfeed/internal/db"
 )
 
-const cardHeight = 4 // lines per card (border + title + meta + summary)
-
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 var (
@@ -99,17 +97,28 @@ func (m *Model) renderTabBar() string {
 	return strings.Join(parts, " ")
 }
 
+// renderArticles renders all cards and updates m.cardOffsets with each card's starting line.
 func (m *Model) renderArticles() string {
 	if len(m.articles) == 0 {
+		m.cardOffsets = nil
 		return styleMeta.Render("\n  No articles yet. Add a feed with /add <url>\n")
 	}
-	innerWidth := m.width - 4 // account for border + padding
+	innerWidth := m.width - 4 // border (1+1) + padding (1+1)
 	if innerWidth < 10 {
 		innerWidth = 10
 	}
+
+	m.cardOffsets = make([]int, len(m.articles))
 	var b strings.Builder
+	currentLine := 0
+
 	for i, a := range m.articles {
-		b.WriteString(m.renderCard(i, a, innerWidth))
+		m.cardOffsets[i] = currentLine
+		card := m.renderCard(i, a, innerWidth)
+		// count actual rendered lines (including borders added by lipgloss)
+		lineCount := strings.Count(card, "\n") + 1
+		currentLine += lineCount + 1 // +1 for the trailing \n separator between cards
+		b.WriteString(card)
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -152,7 +161,7 @@ func (m *Model) renderFooter() string {
 		right := styleHelp.Render("esc clear")
 		return left + strings.Repeat(" ", max(0, m.width-visLen(left)-visLen(right))) + right
 	}
-	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  enter open  m read  / cmd  q quit")
+	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  G newest  gg oldest  ^F/^B page  enter open  m read  / cmd  q quit")
 	return help
 }
 
@@ -213,7 +222,7 @@ func filterEmpty(ss ...string) []string {
 	return out
 }
 
-// visLen returns the visual length of a styled string (strips ANSI codes).
+// visLen returns the visual length of a styled string (strips ANSI escape codes).
 func visLen(s string) int {
 	inEsc := false
 	n := 0

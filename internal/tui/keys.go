@@ -3,16 +3,20 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Up        key.Binding
-	Down      key.Binding
-	Left      key.Binding
-	Right     key.Binding
-	Command   key.Binding
-	Open      key.Binding
-	MarkRead  key.Binding
-	Quit      key.Binding
-	Confirm   key.Binding
-	Cancel    key.Binding
+	Up         key.Binding
+	Down       key.Binding
+	Left       key.Binding
+	Right      key.Binding
+	GotoBottom key.Binding // Shift+G
+	GotoTopG   key.Binding // first g (gg detection)
+	PageDown   key.Binding // Ctrl+F
+	PageUp     key.Binding // Ctrl+B
+	Command    key.Binding
+	Open       key.Binding
+	MarkRead   key.Binding
+	Quit       key.Binding
+	Confirm    key.Binding
+	Cancel     key.Binding
 }
 
 var keys = keyMap{
@@ -31,6 +35,22 @@ var keys = keyMap{
 	Right: key.NewBinding(
 		key.WithKeys("right", "l"),
 		key.WithHelp("→/l", "next group"),
+	),
+	GotoBottom: key.NewBinding(
+		key.WithKeys("G"),
+		key.WithHelp("G", "newest"),
+	),
+	GotoTopG: key.NewBinding(
+		key.WithKeys("g"),
+		key.WithHelp("gg", "oldest"),
+	),
+	PageDown: key.NewBinding(
+		key.WithKeys("ctrl+f"),
+		key.WithHelp("^F", "page down"),
+	),
+	PageUp: key.NewBinding(
+		key.WithKeys("ctrl+b"),
+		key.WithHelp("^B", "page up"),
 	),
 	Command: key.NewBinding(
 		key.WithKeys("/"),
