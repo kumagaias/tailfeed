@@ -62,6 +62,9 @@ type Model struct {
 
 	// pendingG is true after a single "g" press, waiting for a second to form "gg".
 	pendingG bool
+
+	// pendingGroupDel holds the group name awaiting delete confirmation ("y" to proceed).
+	pendingGroupDel string
 }
 
 // New creates the initial TUI model.

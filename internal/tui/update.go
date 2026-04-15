@@ -126,10 +126,23 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.pendingG = false // any other key cancels pending g
 
 	switch {
+	case msg.String() == "y":
+		if m.pendingGroupDel != "" {
+			name := m.pendingGroupDel
+			m.pendingGroupDel = ""
+			m.status = m.execGroupDel(name)
+			return m, nil
+		}
+
 	case msg.String() == "esc":
 		if m.detailOpen {
 			m.detailOpen = false
 			m.resizeViewport()
+			return m, nil
+		}
+		if m.pendingGroupDel != "" {
+			m.pendingGroupDel = ""
+			m.status = ""
 			return m, nil
 		}
 		if m.status != "" {
@@ -154,6 +167,11 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeCommand
 		m.input.SetValue("")
 		m.input.Focus()
+		if m.tabIdx > 0 && m.tabIdx < len(m.tabs) && !m.tabs[m.tabIdx].isStock {
+			m.input.Placeholder = "add <url>  |  remove <url>  |  list  |  group new <name>  |  group del"
+		} else {
+			m.input.Placeholder = "add <url>  |  remove <url>  |  list  |  group new <name>  |  group del <name>"
+		}
 		m.resizeViewport()
 		return m, textinput.Blink
 
@@ -352,7 +370,7 @@ func (m *Model) execCommand(raw string) string {
 	case "list", "ls":
 		return m.cmdList()
 	case "help", "?":
-		return "commands: add <url>  remove <url>  list  group new <name>  group del <name>"
+		return m.cmdHelp()
 	}
 	return fmt.Sprintf("unknown command: %s — type help for usage", parts[0])
 }
@@ -408,6 +426,49 @@ func (m *Model) cmdGroupNew(args []string) string {
 
 func (m *Model) cmdList() string {
 	m.reloadFeedList()
+	m.feedListCursor = 0
+	m.mode = modeFeedList
+	return ""
+}
+
+func (m *Model) cmdHelp() string {
+	m.feedListItems = []string{
+		"Navigation",
+		"  ↑↓ / j k        move cursor",
+		"  ← → / h l       prev/next article + open detail",
+		"  G                newest article",
+		"  gg               oldest article",
+		"  ^F ^J / ^B ^K   page down / up",
+		"",
+		"Detail pane",
+		"  →  / l          open detail",
+		"  ←  / h          close detail",
+		"  v                toggle detail",
+		"  esc              close detail",
+		"",
+		"Groups",
+		"  [ ^ H Shift+←   previous group",
+		"  ] $ L Shift+→   next group",
+		"  mouse click      switch group",
+		"",
+		"Articles",
+		"  enter / o        open in browser",
+		"  mouse click      open in browser",
+		"  space            toggle ♥ stock",
+		"  click ♥          toggle stock",
+		"  m                mark read",
+		"",
+		"Commands  (press /)",
+		"  add <url>             subscribe to feed",
+		"  remove <url>          unsubscribe",
+		"  list                  manage feeds",
+		"  group new <name>      create group",
+		"  group del [name]      delete group (omit name = current group)",
+		"  help                  show this help",
+		"",
+		"  q / ctrl+c    quit",
+	}
+	m.feedListFeeds = nil
 	m.feedListCursor = 0
 	m.mode = modeFeedList
 	return ""
@@ -496,10 +557,31 @@ func (m *Model) updateFeedList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) cmdGroupDel(args []string) string {
-	if len(args) == 0 {
-		return "usage: group del <name>"
+	var name string
+	if len(args) > 0 {
+		name = strings.Join(args, " ")
+	} else {
+		// No argument: use the currently viewed group.
+		if m.tabIdx == 0 || m.tabIdx >= len(m.tabs) || m.tabs[m.tabIdx].isStock {
+			return "cannot delete All or Stock"
+		}
+		name = m.tabs[m.tabIdx].name
 	}
-	name := strings.Join(args, " ")
+
+	// Guard virtual tabs even when named explicitly.
+	if name == "All" || name == "♥ Stock" {
+		return fmt.Sprintf("cannot delete %q", name)
+	}
+
+	if _, err := m.db.GetGroupByName(name); err != nil {
+		return fmt.Sprintf("group %q not found", name)
+	}
+
+	m.pendingGroupDel = name
+	return fmt.Sprintf("delete group %q? press y to confirm, esc to cancel", name)
+}
+
+func (m *Model) execGroupDel(name string) string {
 	g, err := m.db.GetGroupByName(name)
 	if err != nil {
 		return fmt.Sprintf("group %q not found", name)
@@ -509,6 +591,7 @@ func (m *Model) cmdGroupDel(args []string) string {
 	}
 	_ = m.reloadTabs()
 	_ = m.reloadArticles()
+	m.viewport.SetContent(m.renderArticles())
 	return fmt.Sprintf("deleted group %q", name)
 }
 

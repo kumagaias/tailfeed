@@ -225,24 +225,49 @@ var styleFeedList = lipgloss.NewStyle().
 	Padding(0, 1)
 
 func (m *Model) renderFeedList() string {
-	title := styleCursorBar.Render(fmt.Sprintf("Registered feeds (%d)", len(m.feedListItems)))
-	lines := []string{title, ""}
-	for i, item := range m.feedListItems {
-		prefix := "  "
-		text := truncate(item, m.width-10)
-		if i == m.feedListCursor {
-			prefix = styleCursorBar.Render("▶ ")
-			text = styleTitle.Render(text)
-		}
-		lines = append(lines, prefix+text)
+	isHelp := m.feedListFeeds == nil && len(m.feedListItems) > 0
+
+	var title string
+	if isHelp {
+		title = styleCursorBar.Render("Help — keybindings & commands")
+	} else {
+		title = styleCursorBar.Render(fmt.Sprintf("Registered feeds (%d)", len(m.feedListItems)))
 	}
-	if len(m.feedListItems) == 0 {
+	lines := []string{title, ""}
+
+	for i, item := range m.feedListItems {
+		if isHelp {
+			// Help lines: section headers are unindented and bold, others indented.
+			if item == "" {
+				lines = append(lines, "")
+			} else if len(item) > 0 && item[0] != ' ' {
+				lines = append(lines, styleTitle.Render(item))
+			} else {
+				lines = append(lines, styleMeta.Render(item))
+			}
+		} else {
+			prefix := "  "
+			text := truncate(item, m.width-10)
+			if i == m.feedListCursor {
+				prefix = styleCursorBar.Render("▶ ")
+				text = styleTitle.Render(text)
+			}
+			lines = append(lines, prefix+text)
+		}
+	}
+
+	if !isHelp && len(m.feedListItems) == 0 {
 		lines = append(lines, styleMeta.Render("  No feeds registered."))
 	}
+
 	if m.feedListConfirm {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true).Render("  Delete this feed? y/enter to confirm, any other key to cancel"))
 	} else {
-		lines = append(lines, "", styleHelp.Render("  ↑↓/jk select  d delete  esc/q close"))
+		if isHelp {
+			lines = append(lines, "", styleHelp.Render("  esc / q  close"))
+		} else {
+			lines = append(lines, "", styleHelp.Render("  ↑↓/jk select  d delete  esc/q close"))
+		}
 	}
 	panel := styleFeedList.Width(m.width - 4).Render(strings.Join(lines, "\n"))
 	return panel

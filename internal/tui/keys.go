@@ -62,12 +62,12 @@ var keys = keyMap{
 		key.WithHelp("gg", "oldest"),
 	),
 	PageDown: key.NewBinding(
-		key.WithKeys("ctrl+f"),
-		key.WithHelp("^F", "page down"),
+		key.WithKeys("ctrl+f", "ctrl+j"),
+		key.WithHelp("^F/^J", "page down"),
 	),
 	PageUp: key.NewBinding(
-		key.WithKeys("ctrl+b"),
-		key.WithHelp("^B", "page up"),
+		key.WithKeys("ctrl+b", "ctrl+k"),
+		key.WithHelp("^B/^K", "page up"),
 	),
 	Command: key.NewBinding(
 		key.WithKeys("/"),
