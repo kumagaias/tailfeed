@@ -385,6 +385,30 @@ func (m *Model) reloadFeedList() {
 
 // updateFeedList handles key events when the feed list overlay is open.
 func (m *Model) updateFeedList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Confirmation state: only y/enter or esc are meaningful.
+	if m.feedListConfirm {
+		switch msg.String() {
+		case "y", "enter":
+			m.feedListConfirm = false
+			if m.feedListCursor < len(m.feedListFeeds) {
+				f := m.feedListFeeds[m.feedListCursor]
+				if err := m.db.RemoveFeed(f.URL); err != nil {
+					m.status = "error: " + err.Error()
+				} else {
+					m.reloadFeedList()
+					if m.feedListCursor >= len(m.feedListItems) {
+						m.feedListCursor = max(0, len(m.feedListItems)-1)
+					}
+					_ = m.reloadArticles()
+					m.viewport.SetContent(m.renderArticles())
+				}
+			}
+		default:
+			m.feedListConfirm = false
+		}
+		return m, nil
+	}
+
 	switch {
 	case key.Matches(msg, keys.Cancel) || key.Matches(msg, keys.Quit):
 		m.mode = modeNormal
@@ -403,18 +427,8 @@ func (m *Model) updateFeedList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, keys.Delete):
-		if m.feedListCursor < len(m.feedListFeeds) {
-			f := m.feedListFeeds[m.feedListCursor]
-			if err := m.db.RemoveFeed(f.URL); err != nil {
-				m.status = "error: " + err.Error()
-			} else {
-				m.reloadFeedList()
-				if m.feedListCursor >= len(m.feedListItems) {
-					m.feedListCursor = max(0, len(m.feedListItems)-1)
-				}
-				_ = m.reloadArticles()
-				m.viewport.SetContent(m.renderArticles())
-			}
+		if len(m.feedListFeeds) > 0 {
+			m.feedListConfirm = true
 		}
 	}
 	return m, nil

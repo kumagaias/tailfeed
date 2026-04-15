@@ -205,7 +205,11 @@ func (m *Model) renderFeedList() string {
 	if len(m.feedListItems) == 0 {
 		lines = append(lines, styleMeta.Render("  No feeds registered."))
 	}
-	lines = append(lines, "", styleHelp.Render("  ↑↓/jk select  d delete  esc/q close"))
+	if m.feedListConfirm {
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true).Render("  Delete this feed? y/enter to confirm, any other key to cancel"))
+	} else {
+		lines = append(lines, "", styleHelp.Render("  ↑↓/jk select  d delete  esc/q close"))
+	}
 	panel := styleFeedList.Width(m.width - 4).Render(strings.Join(lines, "\n"))
 	return panel
 }
