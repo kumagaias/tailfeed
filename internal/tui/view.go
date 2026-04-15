@@ -161,8 +161,8 @@ func (m *Model) renderArticles() string {
 func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	selected := idx == m.cursor
 
-	// inner content width (card border=2, padding=2 → 4 chars total)
-	inner := width - 2 // reserve 2 for "▶ " / "  " prefix
+	// inner content width: reserve 3 chars for "▶❤ " / " ❤ " prefix
+	inner := width - 3
 	if inner < 4 {
 		inner = 4
 	}
@@ -176,11 +176,11 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	} else if !a.IsRead {
 		title = styleTitle.Render(title)
 	}
-	heart := styleHeartEmpty.Render("♥")
+	heart := styleHeartEmpty.Render("❤")
 	if a.IsStocked {
-		heart = styleHeart.Render("♥")
+		heart = styleHeart.Render("❤")
 	}
-	indicator := cursor + heart
+	indicator := cursor + heart + " "
 
 	// ── Line 2: meta ────────────────────────────────────────────────────────
 	meta := styleMeta.Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))

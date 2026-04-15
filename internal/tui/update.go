@@ -79,8 +79,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				idx := contentY / linesPerSlot
 				lineInSlot := contentY % linesPerSlot
 				if idx >= 0 && idx < len(m.articles) {
-					// Click on the indicator/heart position (title line, col 2) → toggle stock.
-					if lineInSlot == 1 && msg.X == 2 {
+					// Click on the heart position (title line, col 3) → toggle stock.
+					if lineInSlot == 1 && msg.X == 3 {
 						_ = m.db.ToggleStock(m.articles[idx].ID)
 						_ = m.reloadArticles()
 						m.viewport.SetContent(m.renderArticles())
