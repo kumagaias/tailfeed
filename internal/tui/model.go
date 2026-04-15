@@ -13,8 +13,9 @@ import (
 type mode int
 
 const (
-	modeNormal  mode = iota
-	modeCommand // "/" command palette active
+	modeNormal   mode = iota
+	modeCommand       // "/" command palette active
+	modeFeedList      // feed list overlay
 )
 
 const articlesLimit = 200
@@ -44,6 +45,9 @@ type Model struct {
 	viewport viewport.Model
 	input    textinput.Model
 	status   string // transient status message
+
+	// feedListItems holds rendered lines for the feed list overlay.
+	feedListItems []string
 
 	// pendingG is true after a single "g" press, waiting for a second to form "gg".
 	pendingG bool

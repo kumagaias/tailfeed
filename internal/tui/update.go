@@ -67,10 +67,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyMsg:
-		if m.mode == modeCommand {
+		switch m.mode {
+		case modeCommand:
 			return m.updateCommand(msg)
+		case modeFeedList:
+			return m.updateFeedList(msg)
+		default:
+			return m.updateNormal(msg)
 		}
-		return m.updateNormal(msg)
 	}
 	return m, nil
 }
@@ -220,8 +224,10 @@ func (m *Model) execCommand(raw string) string {
 		case "del", "delete":
 			return m.cmdGroupDel(parts[2:])
 		}
+	case "list", "ls":
+		return m.cmdList()
 	case "help", "?":
-		return "commands: add <url>  remove <url>  group new <name>  group del <name>"
+		return "commands: add <url>  remove <url>  list  group new <name>  group del <name>"
 	}
 	return fmt.Sprintf("unknown command: %s — type help for usage", parts[0])
 }
@@ -273,6 +279,46 @@ func (m *Model) cmdGroupNew(args []string) string {
 	}
 	_ = m.reloadTabs()
 	return fmt.Sprintf("created group %q", name)
+}
+
+func (m *Model) cmdList() string {
+	feeds, err := m.db.ListFeeds(nil)
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	groups, _ := m.db.ListGroups()
+	groupName := map[int64]string{}
+	for _, g := range groups {
+		groupName[g.ID] = g.Name
+	}
+
+	items := make([]string, 0, len(feeds))
+	for _, f := range feeds {
+		label := f.Title
+		if label == "" {
+			label = f.URL
+		}
+		group := "(ungrouped)"
+		if f.GroupID != nil {
+			if n, ok := groupName[*f.GroupID]; ok {
+				group = n
+			}
+		}
+		items = append(items, fmt.Sprintf("[%s] %s", group, label))
+	}
+
+	m.feedListItems = items
+	m.mode = modeFeedList
+	return ""
+}
+
+// updateFeedList handles key events when the feed list overlay is open.
+func (m *Model) updateFeedList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if key.Matches(msg, keys.Cancel) || key.Matches(msg, keys.Quit) {
+		m.mode = modeNormal
+		m.feedListItems = nil
+	}
+	return m, nil
 }
 
 func (m *Model) cmdGroupDel(args []string) string {

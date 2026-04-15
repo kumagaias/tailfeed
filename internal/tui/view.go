@@ -76,7 +76,11 @@ func (m *Model) View() string {
 	b.WriteString("\n")
 	b.WriteString(strings.Repeat("─", m.width))
 	b.WriteString("\n")
-	b.WriteString(m.viewport.View())
+	if m.mode == modeFeedList {
+		b.WriteString(m.renderFeedList())
+	} else {
+		b.WriteString(m.viewport.View())
+	}
 	b.WriteString("\n")
 	b.WriteString(m.renderFooter())
 	return b.String()
@@ -168,6 +172,25 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	return s.Render(content)
 }
 
+var styleFeedList = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("4")).
+	Padding(0, 1)
+
+func (m *Model) renderFeedList() string {
+	title := styleCursorBar.Render(fmt.Sprintf("Registered feeds (%d)", len(m.feedListItems)))
+	lines := []string{title, ""}
+	for _, item := range m.feedListItems {
+		lines = append(lines, "  "+truncate(item, m.width-8))
+	}
+	if len(m.feedListItems) == 0 {
+		lines = append(lines, styleMeta.Render("  No feeds registered."))
+	}
+	lines = append(lines, "", styleHelp.Render("  esc / q  close"))
+	panel := styleFeedList.Width(m.width - 4).Render(strings.Join(lines, "\n"))
+	return panel
+}
+
 func (m *Model) renderFooter() string {
 	if m.mode == modeCommand {
 		prompt := styleInput.Width(m.width - 4).Render("> " + m.input.View())
@@ -177,6 +200,9 @@ func (m *Model) renderFooter() string {
 		left := styleStatus.Render(m.status)
 		right := styleHelp.Render("esc clear")
 		return left + strings.Repeat(" ", max(0, m.width-visLen(left)-visLen(right))) + right
+	}
+	if m.mode == modeFeedList {
+		return ""
 	}
 	help := styleHelp.Render("↑↓/jk scroll  ←→/hl groups  G newest  gg oldest  ^F/^B page  enter open  m read  / cmd  q quit")
 	return help
