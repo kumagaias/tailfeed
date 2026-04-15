@@ -182,15 +182,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, keys.Right):
-		if m.detailOpen {
-			// Detail already open: move to next article.
-			if m.cursor < len(m.articles)-1 {
-				m.cursor++
-				m.syncViewportToCursor()
-				m.updateDetailContent()
-			}
-		} else {
-			// Detail closed: just open it for the current article.
+		if !m.detailOpen {
 			m.detailOpen = true
 			m.resizeViewport()
 			m.updateDetailContent()
