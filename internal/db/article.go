@@ -43,7 +43,7 @@ func (d *DB) ListArticles(groupID *int64, limit int) ([]Article, error) {
 		FROM articles a
 		JOIN feeds f ON f.id = a.feed_id
 		%s
-		ORDER BY COALESCE(a.published_at, a.created_at) DESC
+		ORDER BY COALESCE(a.published_at, a.created_at) ASC
 		LIMIT ?`
 
 	var (

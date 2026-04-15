@@ -38,11 +38,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport = viewport.New(msg.Width, m.contentHeight())
 		m.viewport.SetContent(m.renderArticles())
+		m.viewport.GotoBottom()
 		return m, nil
 
 	case newArticleMsg:
 		_ = m.reloadArticles()
+		atBottom := m.viewport.AtBottom()
 		m.viewport.SetContent(m.renderArticles())
+		if atBottom {
+			m.viewport.GotoBottom()
+		}
 		// keep listening
 		return m, listenForArticles(m.poller.Articles())
 
@@ -76,7 +81,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			_ = m.reloadArticles()
 			m.viewport.SetContent(m.renderArticles())
-			m.viewport.GotoTop()
+			m.viewport.GotoBottom()
 		}
 
 	case key.Matches(msg, keys.Right):
@@ -85,7 +90,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			_ = m.reloadArticles()
 			m.viewport.SetContent(m.renderArticles())
-			m.viewport.GotoTop()
+			m.viewport.GotoBottom()
 		}
 
 	case key.Matches(msg, keys.Up):
