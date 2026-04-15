@@ -132,6 +132,9 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resizeViewport()
 			m.syncViewportToCursor()
 			m.updateDetailContent()
+		} else if m.detailOpen {
+			m.detailOpen = false
+			m.resizeViewport()
 		}
 
 	case key.Matches(msg, keys.Right):
