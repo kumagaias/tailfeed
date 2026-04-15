@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -80,7 +81,11 @@ func (d *DB) migrate() error {
 			return err
 		}
 		if _, err := d.Exec(string(data)); err != nil {
-			return fmt.Errorf("run migration %s: %w", e.Name(), err)
+			// "duplicate column name" means the migration already ran before
+			// the schema_migrations table existed — treat as applied.
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return fmt.Errorf("run migration %s: %w", e.Name(), err)
+			}
 		}
 		if _, err := d.Exec(`INSERT INTO schema_migrations (name) VALUES (?)`, e.Name()); err != nil {
 			return fmt.Errorf("record migration %s: %w", e.Name(), err)
