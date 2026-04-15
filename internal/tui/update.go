@@ -93,7 +93,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.pendingG = false // any other key cancels pending g
 
 	switch {
-	case key.Matches(msg, keys.Quit):
+	case key.Matches(msg, keys.Quit), msg.String() == "ctrl+c":
 		return m, tea.Quit
 
 	case key.Matches(msg, keys.GotoBottom):

@@ -65,14 +65,14 @@ var keys = keyMap{
 		key.WithHelp("m", "mark read"),
 	),
 	Quit: key.NewBinding(
-		key.WithKeys("q", "ctrl+c"),
+		key.WithKeys("q"),
 		key.WithHelp("q", "quit"),
 	),
 	Confirm: key.NewBinding(
 		key.WithKeys("enter"),
 	),
 	Cancel: key.NewBinding(
-		key.WithKeys("esc"),
-		key.WithHelp("esc", "cancel"),
+		key.WithKeys("esc", "ctrl+c"),
+		key.WithHelp("esc/^C", "cancel"),
 	),
 }
