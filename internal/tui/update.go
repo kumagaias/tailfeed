@@ -65,9 +65,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for i, r := range m.tabXRanges() {
 					if msg.X >= r[0] && msg.X < r[1] && i != m.tabIdx {
 						m.tabIdx = i
-						_ = m.reloadArticles()
-						m.syncViewportToCursor()
-						m.updateDetailContent()
+						m.reloadGroupPreservePos()
 						return m, nil
 					}
 				}
@@ -184,28 +182,30 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, keys.Right):
-		if m.cursor < len(m.articles)-1 {
-			m.cursor++
+		if m.detailOpen {
+			// Detail already open: move to next article.
+			if m.cursor < len(m.articles)-1 {
+				m.cursor++
+				m.syncViewportToCursor()
+				m.updateDetailContent()
+			}
+		} else {
+			// Detail closed: just open it for the current article.
 			m.detailOpen = true
 			m.resizeViewport()
-			m.syncViewportToCursor()
 			m.updateDetailContent()
 		}
 
 	case key.Matches(msg, keys.PrevGroup):
 		if m.tabIdx > 0 {
 			m.tabIdx--
-			_ = m.reloadArticles()
-			m.syncViewportToCursor()
-			m.updateDetailContent()
+			m.reloadGroupPreservePos()
 		}
 
 	case key.Matches(msg, keys.NextGroup):
 		if m.tabIdx < len(m.tabs)-1 {
 			m.tabIdx++
-			_ = m.reloadArticles()
-			m.syncViewportToCursor()
-			m.updateDetailContent()
+			m.reloadGroupPreservePos()
 		}
 
 	case key.Matches(msg, keys.Up):
@@ -273,6 +273,22 @@ func (m *Model) updateCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var tiCmd tea.Cmd
 	m.input, tiCmd = m.input.Update(msg)
 	return m, tiCmd
+}
+
+// reloadGroupPreservePos switches to m.tabIdx's articles while keeping the
+// cursor card at the same visual row on screen.
+func (m *Model) reloadGroupPreservePos() {
+	// Visual offset of the cursor card from the top of the viewport.
+	cursorVisualOffset := m.cursor*linesPerSlot - m.viewport.YOffset
+
+	_ = m.reloadArticles() // may clamp cursor to new group's length
+
+	// Compute YOffset that places the (possibly new) cursor at the same row.
+	newYOffset := m.cursor*linesPerSlot - cursorVisualOffset
+
+	m.viewport.SetContent(m.renderArticles())
+	m.viewport.SetYOffset(newYOffset) // SetYOffset clamps to valid range
+	m.updateDetailContent()
 }
 
 // scrolloff is the minimum number of lines kept above/below the cursor card.

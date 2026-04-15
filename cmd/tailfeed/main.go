@@ -100,6 +100,21 @@ func runFollow(groupName string) error {
 		fmt.Fprintln(os.Stderr, "tailfeed: watching all feeds — Ctrl+C to stop")
 	}
 
+	// Print the most recent 10 existing articles before streaming new ones.
+	var recentGroupID *int64
+	if groupName != "" {
+		g, _ := database.GetGroupByName(groupName)
+		recentGroupID = &g.ID
+	}
+	recent, err := database.ListArticles(recentGroupID, 10)
+	if err == nil && len(recent) > 0 {
+		fmt.Fprintln(os.Stderr, "── recent articles ──────────────────────────────────────────")
+		for _, a := range recent {
+			printArticle(a)
+		}
+		fmt.Fprintln(os.Stderr, "── watching for new articles ────────────────────────────────")
+	}
+
 	poller := feed.New(database)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
