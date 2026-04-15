@@ -176,26 +176,27 @@ func (m *Model) updateCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, tiCmd
 }
 
-// syncViewportToCursor re-renders and scrolls the viewport so the cursor card is visible.
+// syncViewportToCursor re-renders and centers the viewport on the cursor card.
 func (m *Model) syncViewportToCursor() {
 	m.viewport.SetContent(m.renderArticles())
 	if m.cursor < 0 || m.cursor >= len(m.cardOffsets) {
 		return
 	}
 	cardTop := m.cardOffsets[m.cursor]
-	var cardBottom int
+	var cardH int
 	if m.cursor+1 < len(m.cardOffsets) {
-		cardBottom = m.cardOffsets[m.cursor+1] - 1 // -1 for the blank separator line
+		cardH = m.cardOffsets[m.cursor+1] - cardTop - 1 // exclude trailing blank line
 	} else {
-		// Last card: estimate from content line count
-		cardBottom = cardTop + 5
+		cardH = 5 // estimate for last card
 	}
 
-	if cardTop < m.viewport.YOffset {
-		m.viewport.SetYOffset(cardTop)
-	} else if cardBottom >= m.viewport.YOffset+m.viewport.Height {
-		m.viewport.SetYOffset(cardBottom - m.viewport.Height + 1)
+	// Center the selected card in the viewport (vim zz style).
+	center := cardTop + cardH/2
+	offset := center - m.viewport.Height/2
+	if offset < 0 {
+		offset = 0
 	}
+	m.viewport.SetYOffset(offset)
 }
 
 func (m *Model) contentHeight() int {

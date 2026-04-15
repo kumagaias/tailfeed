@@ -30,19 +30,23 @@ var (
 
 	styleCardSelected = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("4")).
+				BorderForeground(lipgloss.Color("12")). // bright blue
 				Padding(0, 1)
 
 	styleCardNormal = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("0")).
+			BorderForeground(lipgloss.Color("238")). // subtle dark grey
 			Padding(0, 1)
 
 	styleCardRead = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("0")).
+			BorderForeground(lipgloss.Color("238")).
 			Foreground(lipgloss.Color("8")).
 			Padding(0, 1)
+
+	styleCursorBar = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("12")).
+			Bold(true)
 
 	styleTitle = lipgloss.NewStyle().Bold(true)
 
@@ -125,8 +129,18 @@ func (m *Model) renderArticles() string {
 }
 
 func (m *Model) renderCard(idx int, a db.Article, width int) string {
-	title := truncate(a.Title, width)
-	if !a.IsRead {
+	selected := idx == m.cursor
+
+	// Reserve 2 chars for the cursor indicator ("▶ ")
+	innerWidth := width - 2
+	if innerWidth < 4 {
+		innerWidth = 4
+	}
+
+	title := truncate(a.Title, innerWidth)
+	if selected {
+		title = styleCursorBar.Render(title)
+	} else if !a.IsRead {
 		title = styleTitle.Render(title)
 	}
 
@@ -134,14 +148,23 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 
 	summary := ""
 	if a.Summary != "" {
-		summary = styleSummary.Render(truncate(stripHTML(a.Summary), width))
+		summary = styleSummary.Render(truncate(stripHTML(a.Summary), innerWidth))
 	}
 
-	content := strings.Join(filterEmpty(title, meta, summary), "\n")
+	// Prefix title with cursor indicator
+	indicator := "  "
+	if selected {
+		indicator = styleCursorBar.Render("▶ ")
+	}
+	lines := filterEmpty(indicator+title, "  "+meta)
+	if summary != "" {
+		lines = append(lines, "  "+summary)
+	}
+	content := strings.Join(lines, "\n")
 
 	var s lipgloss.Style
 	switch {
-	case idx == m.cursor:
+	case selected:
 		s = styleCardSelected.Width(width)
 	case a.IsRead:
 		s = styleCardRead.Width(width)
