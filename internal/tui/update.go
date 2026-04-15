@@ -126,33 +126,39 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, textinput.Blink
 
 	case key.Matches(msg, keys.Left):
-		if m.detailOpen {
-			// detail pane open: navigate to previous article
-			if m.cursor > 0 {
-				m.cursor--
-				m.syncViewportToCursor()
-				m.updateDetailContent()
-			}
-		} else if m.tabIdx > 0 {
+		if m.cursor > 0 {
+			m.cursor--
+			m.detailOpen = true
+			m.resizeViewport()
+			m.syncViewportToCursor()
+			m.updateDetailContent()
+		}
+
+	case key.Matches(msg, keys.Right):
+		if m.cursor < len(m.articles)-1 {
+			m.cursor++
+			m.detailOpen = true
+			m.resizeViewport()
+			m.syncViewportToCursor()
+			m.updateDetailContent()
+		}
+
+	case key.Matches(msg, keys.PrevGroup):
+		if m.tabIdx > 0 {
 			m.tabIdx--
 			_ = m.reloadArticles()
 			m.cursor = max(0, len(m.articles)-1)
 			m.centerViewportOnCursor()
+			m.updateDetailContent()
 		}
 
-	case key.Matches(msg, keys.Right):
-		if m.detailOpen {
-			// detail pane open: navigate to next article
-			if m.cursor < len(m.articles)-1 {
-				m.cursor++
-				m.syncViewportToCursor()
-				m.updateDetailContent()
-			}
-		} else if m.tabIdx < len(m.tabs)-1 {
+	case key.Matches(msg, keys.NextGroup):
+		if m.tabIdx < len(m.tabs)-1 {
 			m.tabIdx++
 			_ = m.reloadArticles()
 			m.cursor = max(0, len(m.articles)-1)
 			m.centerViewportOnCursor()
+			m.updateDetailContent()
 		}
 
 	case key.Matches(msg, keys.Up):
