@@ -49,7 +49,7 @@ var (
 			Bold(true)
 
 	styleHeart      = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	styleHeartEmpty = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	styleHeartEmpty = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	styleTitle = lipgloss.NewStyle().Bold(true)
 
@@ -176,7 +176,7 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	} else if !a.IsRead {
 		title = styleTitle.Render(title)
 	}
-	heart := styleHeartEmpty.Render("♡")
+	heart := styleHeartEmpty.Render("♥")
 	if a.IsStocked {
 		heart = styleHeart.Render("♥")
 	}
