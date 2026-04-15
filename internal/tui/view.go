@@ -193,7 +193,7 @@ func (m *Model) renderFeedList() string {
 
 func (m *Model) renderFooter() string {
 	if m.mode == modeCommand {
-		prompt := styleInput.Width(m.width - 4).Render("> " + m.input.View())
+		prompt := styleInput.Width(m.width - 4).Render(m.input.View())
 		return prompt
 	}
 	if m.status != "" {
