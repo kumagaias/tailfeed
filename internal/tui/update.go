@@ -59,17 +59,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseMsg:
-		// Tab bar is at row 1. A left click there switches groups.
-		if msg.Type == tea.MouseLeft && msg.Y == 1 && m.mode == modeNormal {
-			for i, r := range m.tabXRanges() {
-				if msg.X >= r[0] && msg.X < r[1] && i != m.tabIdx {
-					m.tabIdx = i
-					_ = m.reloadArticles()
-					m.cursor = max(0, len(m.articles)-1)
-					m.centerViewportOnCursor()
-					m.updateDetailContent()
-					return m, nil
+		if msg.Type == tea.MouseLeft && m.mode == modeNormal {
+			// Tab bar is at row 1 — switch group.
+			if msg.Y == 1 {
+				for i, r := range m.tabXRanges() {
+					if msg.X >= r[0] && msg.X < r[1] && i != m.tabIdx {
+						m.tabIdx = i
+						_ = m.reloadArticles()
+						m.cursor = max(0, len(m.articles)-1)
+						m.centerViewportOnCursor()
+						m.updateDetailContent()
+						return m, nil
+					}
 				}
+			}
+			// Article area starts at row 3 (header + tabbar + separator).
+			const articleAreaTop = 3
+			if msg.Y >= articleAreaTop {
+				contentY := msg.Y - articleAreaTop + m.viewport.YOffset
+				idx := contentY / linesPerSlot
+				if idx >= 0 && idx < len(m.articles) {
+					if link := m.articles[idx].Link; link != "" {
+						_ = openBrowser(link)
+					}
+				}
+				return m, nil
 			}
 		}
 		// Delegate scroll events to viewport.
