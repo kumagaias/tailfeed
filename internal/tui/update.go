@@ -105,6 +105,17 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.pendingG = false // any other key cancels pending g
 
 	switch {
+	case msg.String() == "esc":
+		if m.detailOpen {
+			m.detailOpen = false
+			m.resizeViewport()
+			return m, nil
+		}
+		if m.status != "" {
+			m.status = ""
+			return m, nil
+		}
+
 	case key.Matches(msg, keys.Quit), msg.String() == "ctrl+c":
 		return m, tea.Quit
 
