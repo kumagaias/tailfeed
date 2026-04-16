@@ -57,6 +57,18 @@ func configDir() (string, error) {
 	return filepath.Join(home, ".config", "tailfeed"), nil
 }
 
+// Clear deletes all articles, feeds, and groups from the database.
+func (d *DB) Clear() error {
+	if _, err := d.Exec(`DELETE FROM articles`); err != nil {
+		return err
+	}
+	if _, err := d.Exec(`DELETE FROM feeds`); err != nil {
+		return err
+	}
+	_, err := d.Exec(`DELETE FROM groups`)
+	return err
+}
+
 func (d *DB) migrate() error {
 	// Ensure the tracking table exists.
 	if _, err := d.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY)`); err != nil {

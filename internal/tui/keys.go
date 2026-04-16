@@ -3,25 +3,27 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Up         key.Binding
-	Down       key.Binding
-	Left       key.Binding
-	Right      key.Binding
-	PrevGroup  key.Binding // [ ^ H shift+left
-	NextGroup  key.Binding // ] $ L shift+right
-	Stock      key.Binding // space
-	GotoBottom key.Binding // Shift+G
-	GotoTopG   key.Binding // first g (gg detection)
-	PageDown   key.Binding // Ctrl+F
-	PageUp     key.Binding // Ctrl+B
-	Command    key.Binding
-	Open       key.Binding
-	MarkRead   key.Binding
-	Quit       key.Binding
-	Confirm    key.Binding
-	Cancel     key.Binding
-	ViewDetail key.Binding // v — toggle detail pane
-	Delete     key.Binding // d — delete selected feed in list overlay
+	Up          key.Binding
+	Down        key.Binding
+	Left        key.Binding
+	Right       key.Binding
+	PrevGroup   key.Binding // [ ^ H shift+left
+	NextGroup   key.Binding // ] $ L shift+right
+	Stock       key.Binding // space
+	GotoBottom  key.Binding // Shift+G
+	GotoTopG    key.Binding // first g (gg detection)
+	PageDown    key.Binding // Ctrl+F (full page)
+	PageUp      key.Binding // Ctrl+B (full page)
+	HalfDown    key.Binding // Ctrl+D (half page)
+	HalfUp      key.Binding // Ctrl+U (half page)
+	Command     key.Binding
+	Open        key.Binding
+	MarkRead    key.Binding
+	Quit        key.Binding
+	Confirm     key.Binding
+	Cancel      key.Binding
+	ViewDetail  key.Binding // v — toggle detail pane
+	Delete      key.Binding // d — delete selected feed in list overlay
 }
 
 var keys = keyMap{
@@ -68,6 +70,14 @@ var keys = keyMap{
 	PageUp: key.NewBinding(
 		key.WithKeys("ctrl+b", "ctrl+k"),
 		key.WithHelp("^B/^K", "page up"),
+	),
+	HalfDown: key.NewBinding(
+		key.WithKeys("ctrl+d"),
+		key.WithHelp("^D", "half page down"),
+	),
+	HalfUp: key.NewBinding(
+		key.WithKeys("ctrl+u"),
+		key.WithHelp("^U", "half page up"),
 	),
 	Command: key.NewBinding(
 		key.WithKeys("/"),

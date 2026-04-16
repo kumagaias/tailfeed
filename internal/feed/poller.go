@@ -4,6 +4,7 @@ package feed
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -109,6 +110,9 @@ func (p *Poller) isDue(f db.Feed, now time.Time) bool {
 }
 
 func (p *Poller) fetchFeed(ctx context.Context, f db.Feed) {
+	if !strings.HasPrefix(f.URL, "http://") && !strings.HasPrefix(f.URL, "https://") {
+		return
+	}
 	feed, err := p.parser.ParseURLWithContext(f.URL, ctx)
 	if err != nil {
 		slog.Warn("fetch feed", "url", f.URL, "err", err)

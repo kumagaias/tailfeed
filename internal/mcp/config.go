@@ -13,6 +13,7 @@ type Config struct {
 	Args     []string          `json:"args,omitempty"`
 	Env      map[string]string `json:"env,omitempty"`
 	Language string            `json:"language,omitempty"` // e.g. "Japanese", "English". default: "Japanese"
+	Disabled bool              `json:"disabled,omitempty"`
 }
 
 // SummaryLanguage returns the language to use for summaries.
@@ -23,8 +24,20 @@ func (c Config) SummaryLanguage() string {
 	return "Japanese"
 }
 
-// Load reads ~/.config/tailfeed/mcp.json. Returns nil when not configured.
+// Load reads ~/.config/tailfeed/mcp.json. Returns nil when not configured or disabled.
 func Load() (*Config, error) {
+	cfg, err := LoadRaw()
+	if err != nil || cfg == nil {
+		return nil, err
+	}
+	if cfg.Disabled {
+		return nil, nil
+	}
+	return cfg, nil
+}
+
+// LoadRaw reads ~/.config/tailfeed/mcp.json without checking the Disabled flag.
+func LoadRaw() (*Config, error) {
 	path, err := configPath()
 	if err != nil {
 		return nil, err
