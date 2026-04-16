@@ -254,7 +254,7 @@ func TestArticleListFilterByGroup(t *testing.T) {
 	if len(all) != 2 {
 		t.Errorf("expected 2 total articles, got %d", len(all))
 	}
-	inGroup, _ := d.ListArticles(&g.ID, 50)
+	inGroup, _ := d.ListArticles(&g.ID, 50, 0)
 	if len(inGroup) != 1 {
 		t.Errorf("expected 1 article in group, got %d", len(inGroup))
 	}

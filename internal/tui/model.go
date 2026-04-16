@@ -9,7 +9,6 @@ import (
 
 	"github.com/kumagaias/tailfeed/internal/db"
 	"github.com/kumagaias/tailfeed/internal/feed"
-	"github.com/kumagaias/tailfeed/internal/mcp"
 )
 
 // mode represents the current UI mode.
@@ -97,21 +96,20 @@ type Model struct {
 	// pendingGroupDel holds the group name awaiting delete confirmation ("y" to proceed).
 	pendingGroupDel string
 
+	// pendingClear is true when /clear is awaiting user confirmation ("y" to proceed).
+	pendingClear bool
+
 	// pendingHTMLPath holds a generated HTML report path awaiting user confirmation to open.
 	pendingHTMLPath string
 }
 
-// commandPlaceholder returns the input placeholder text, omitting MCP commands
-// when no MCP server is configured.
+// commandPlaceholder returns the input placeholder text for the command palette.
 func commandPlaceholder(withGroupDel bool) string {
 	base := "add <url>  |  remove <url>  |  list  |  group new <name>  |  group del"
 	if withGroupDel {
 		base += " <name>"
 	}
-	cfg, _ := mcp.Load()
-	if cfg != nil {
-		base += "  |  suggest  |  summary  |  summary today"
-	}
+	base += "  |  suggest  |  summary  |  summary today"
 	return base
 }
 func New(database *db.DB, poller *feed.Poller) (*Model, error) {
