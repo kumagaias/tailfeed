@@ -1,5 +1,5 @@
 # Binaries
-tailfeed
+/tailfeed
 *.exe
 
 # Build artifacts

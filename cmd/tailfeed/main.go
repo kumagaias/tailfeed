@@ -211,6 +211,15 @@ func stripHTMLSimple(s string) string {
 	return strings.Join(strings.Fields(b.String()), " ")
 }
 
+// sampleFeeds is a curated list of popular RSS feeds for tech developers.
+var sampleFeeds = []struct{ label, url string }{
+	{"Hacker News", "https://news.ycombinator.com/rss"},
+	{"Smashing Magazine", "https://www.smashingmagazine.com/feed/"},
+	{"dev.to", "https://dev.to/feed"},
+	{"GitHub Blog", "https://github.blog/feed/"},
+	{"Krebs on Security", "https://krebsonsecurity.com/feed/"},
+}
+
 // addCmd adds a feed from the command line.
 func addCmd() *cobra.Command {
 	var groupName string
@@ -242,6 +251,29 @@ func addCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&groupName, "group", "g", "", "group name")
+
+	sampleCmd := &cobra.Command{
+		Use:   "sample",
+		Short: "Register a curated set of popular tech RSS feeds",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			database, err := db.Open()
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+
+			for _, f := range sampleFeeds {
+				if _, err := database.AddFeed(f.url, nil); err != nil {
+					fmt.Fprintf(os.Stderr, "skip %s: %v\n", f.label, err)
+					continue
+				}
+				fmt.Printf("Added: %s\n  %s\n", f.label, f.url)
+			}
+			return nil
+		},
+	}
+	cmd.AddCommand(sampleCmd)
 	return cmd
 }
 
