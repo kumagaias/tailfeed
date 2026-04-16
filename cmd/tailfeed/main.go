@@ -224,8 +224,8 @@ var sampleFeeds = []struct{ label, url string }{
 func addCmd() *cobra.Command {
 	var groupName string
 	cmd := &cobra.Command{
-		Use:   "add <url>",
-		Short: "Register an RSS feed",
+		Use:   "add <url|sample>",
+		Short: "Register an RSS feed (use \"sample\" to add popular feeds)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			database, err := db.Open()
@@ -233,6 +233,17 @@ func addCmd() *cobra.Command {
 				return err
 			}
 			defer database.Close()
+
+			if args[0] == "sample" {
+				for _, f := range sampleFeeds {
+					if _, err := database.AddFeed(f.url, nil); err != nil {
+						fmt.Fprintf(os.Stderr, "skip %s: %v\n", f.label, err)
+						continue
+					}
+					fmt.Printf("Added: %s\n  %s\n", f.label, f.url)
+				}
+				return nil
+			}
 
 			var groupID *int64
 			if groupName != "" {
@@ -251,29 +262,6 @@ func addCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&groupName, "group", "g", "", "group name")
-
-	sampleCmd := &cobra.Command{
-		Use:   "sample",
-		Short: "Register a curated set of popular tech RSS feeds",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			database, err := db.Open()
-			if err != nil {
-				return err
-			}
-			defer database.Close()
-
-			for _, f := range sampleFeeds {
-				if _, err := database.AddFeed(f.url, nil); err != nil {
-					fmt.Fprintf(os.Stderr, "skip %s: %v\n", f.label, err)
-					continue
-				}
-				fmt.Printf("Added: %s\n  %s\n", f.label, f.url)
-			}
-			return nil
-		},
-	}
-	cmd.AddCommand(sampleCmd)
 	return cmd
 }
 
