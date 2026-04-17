@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 
@@ -47,6 +49,8 @@ func rootCmd() *cobra.Command {
 
 // runTUI opens the interactive feed viewer.
 func runTUI() error {
+	// Suppress log output so it doesn't bleed into the TUI.
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	database, err := db.Open()
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
