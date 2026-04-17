@@ -5,7 +5,17 @@ on:
     branches: [main]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+
   tag:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
