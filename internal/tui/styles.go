@@ -54,7 +54,7 @@ var (
 
 	styleMeta = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
-	styleSummary = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Inline(true)
+	styleSummary = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
 	styleStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 

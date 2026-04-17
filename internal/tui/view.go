@@ -146,7 +146,7 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 
 	content := indicator + title + "\n" +
 		"  " + meta + "\n" +
-		"  " + styleSummary.MaxWidth(inner).Render(summaryLine)
+		"  " + styleSummary.Inline(true).MaxWidth(inner).Render(summaryLine)
 
 	var s lipgloss.Style
 	switch {
