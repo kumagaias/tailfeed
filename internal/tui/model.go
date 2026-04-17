@@ -23,7 +23,7 @@ const (
 	modeSuggestInput  // free-text input for suggest theme
 )
 
-const articlesLimit = 200
+const articlesLimit = 1000
 
 // articlesPageSize is how many older articles to load per "load more" request.
 const articlesPageSize = 50
