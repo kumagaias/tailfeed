@@ -42,7 +42,7 @@ const articleSelectQ = `
 	FROM articles a
 	JOIN feeds f ON f.id = a.feed_id
 	%s
-	ORDER BY COALESCE(a.published_at, a.created_at) ASC
+	ORDER BY COALESCE(a.published_at, a.created_at) DESC
 	LIMIT ? OFFSET ?`
 
 const articleSelectDescQ = `
