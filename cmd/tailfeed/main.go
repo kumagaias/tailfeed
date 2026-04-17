@@ -30,6 +30,7 @@ func rootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "tailfeed",
 		Short:   "A tail-style terminal RSS reader",
+		Long:    "tailfeed " + version + " — A tail-style terminal RSS reader",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if follow {
