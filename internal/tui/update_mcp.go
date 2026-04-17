@@ -169,10 +169,9 @@ func (m *Model) cmdUsage() (string, tea.Cmd) {
 		if err != nil {
 			return usageMsg{text: "usage: " + err.Error()}
 		}
-		text := fmt.Sprintf("plan: %s  ·  summary: %d/%d  ·  suggest: %d/%d",
+		text := fmt.Sprintf("plan: %s  ·  usage: %d/%d (summary, suggest)",
 			info.Plan,
 			info.SummaryRemaining, info.SummaryLimit,
-			info.SuggestRemaining, info.SuggestLimit,
 		)
 		if info.ResetAt != "" {
 			text += "  ·  resets " + info.ResetAt

@@ -312,8 +312,7 @@ func usageCmd() *cobra.Command {
 				return err
 			}
 			fmt.Printf("plan:    %s\n", info.Plan)
-			fmt.Printf("summary: %d / %d remaining\n", info.SummaryRemaining, info.SummaryLimit)
-			fmt.Printf("suggest: %d / %d remaining\n", info.SuggestRemaining, info.SuggestLimit)
+			fmt.Printf("usage:   %d / %d remaining (summary, suggest)\n", info.SummaryRemaining, info.SummaryLimit)
 			if info.ResetAt != "" {
 				fmt.Printf("resets:  %s\n", info.ResetAt)
 			}
