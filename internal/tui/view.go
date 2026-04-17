@@ -325,5 +325,5 @@ func (m *Model) renderDetailContent() string {
 		b.WriteString(styleHelp.Render("space ♡ stock  /  click ♥ to toggle"))
 	}
 
-	return lipgloss.NewStyle().Padding(0, 1).Render(b.String())
+	return lipgloss.NewStyle().Padding(0, 1).Width(m.detailPaneWidth()).Render(b.String())
 }
