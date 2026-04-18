@@ -130,6 +130,7 @@ func New(database *db.DB, poller *feed.Poller) (*Model, error) {
 	if err := m.reloadArticles(); err != nil {
 		return nil, err
 	}
+	m.jumpToNewest()
 	return m, nil
 }
 
@@ -174,6 +175,10 @@ func (m *Model) reloadArticles() error {
 	}
 	if err != nil {
 		return err
+	}
+	// Reverse so oldest is at top, newest at bottom.
+	for i, j := 0, len(articles)-1; i < j; i, j = i+1, j-1 {
+		articles[i], articles[j] = articles[j], articles[i]
 	}
 	m.articles = articles
 	// Apply keyword filter if active.
