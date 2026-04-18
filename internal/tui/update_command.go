@@ -61,6 +61,12 @@ func (m *Model) cmdAdd(args []string) string {
 		return "usage: add <url> [--group <name>]"
 	}
 	url := args[0]
+
+	// Validate URL format
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return fmt.Sprintf("invalid URL format: %q (must start with http:// or https://)", url)
+	}
+
 	groupID := m.currentGroupID()
 
 	for i, a := range args[1:] {

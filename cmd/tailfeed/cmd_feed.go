@@ -155,6 +155,11 @@ func addCmd() *cobra.Command {
 				return nil
 			}
 
+			// Validate URL format
+			if !strings.HasPrefix(args[0], "http://") && !strings.HasPrefix(args[0], "https://") {
+				return fmt.Errorf("invalid URL format: %q (must start with http:// or https://)", args[0])
+			}
+
 			var groupID *int64
 			if groupName != "" {
 				g, err := database.GetGroupByName(groupName)
