@@ -58,3 +58,4 @@ release:
   github:
     owner: kumagaias
     name: tailfeed
+  replace_existing_artifacts: true
