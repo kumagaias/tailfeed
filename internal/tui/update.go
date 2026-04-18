@@ -422,7 +422,6 @@ func (m *Model) centerViewportOnCursor() {
 	}
 	m.viewport.SetContent(content)
 	m.viewport.SetYOffset(offset)
-	slog.Debug("center", "cursor", m.cursor, "cardCenter", cardCenter, "wantOffset", offset, "gotOffset", m.viewport.YOffset, "vpH", m.viewport.Height, "totalLines", strings.Count(content, "\n"))
 }
 
 func (m *Model) contentHeight() int {
