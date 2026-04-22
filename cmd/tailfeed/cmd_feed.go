@@ -233,24 +233,42 @@ func listCmd() *cobra.Command {
 
 func summaryCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "summary",
-		Short: "Summarise today's articles via MCP (or tailfeed API) and print to stdout",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Use:   "summary [today|yesterday|week]",
+		Short: "Summarise articles via MCP (or tailfeed API) and print to stdout",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			period := "today"
+			if len(args) > 0 {
+				period = args[0]
+			}
+
 			database, err := db.Open()
 			if err != nil {
 				return err
 			}
 			defer database.Close()
 
-			articles, err := database.ListTodayArticles()
+			var articles []db.Article
+			var label string
+			switch period {
+			case "yesterday":
+				articles, err = database.ListYesterdayArticles()
+				label = "yesterday"
+			case "week":
+				articles, err = database.ListWeekArticles()
+				label = "last 7 days"
+			default:
+				articles, err = database.ListTodayArticles()
+				label = "today"
+			}
 			if err != nil {
 				return err
 			}
 			if len(articles) == 0 {
-				fmt.Println("No articles today.")
+				fmt.Printf("No articles for %s.\n", label)
 				return nil
 			}
-			fmt.Fprintf(os.Stderr, "Summarising %d articles…\n", len(articles))
+			fmt.Fprintf(os.Stderr, "Summarising %d articles (%s)…\n", len(articles), label)
 
 			var text string
 			mcpCfg, err := mcp.Load()
@@ -263,7 +281,7 @@ func summaryCmd() *cobra.Command {
 					sb.WriteString(fmt.Sprintf("## %s\nURL: %s\n%s\n\n", a.Title, a.Link, a.Summary))
 				}
 				text, err = mcp.Call(mcpCfg, map[string]any{
-					"question": fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize today's %d articles in %s for a technical audience. For each article: one-line TL;DR, key technical points as bullet list. End with a "## Today's Signal" section: 2-3 sentences on trends worth watching. Be concise, skip fluff.`, len(articles), mcpCfg.SummaryLanguage()),
+					"question": fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize %s's %d articles in %s for a technical audience. For each article: one-line TL;DR, key technical points as bullet list. End with a "## Today's Signal" section: 2-3 sentences on trends worth watching. Be concise, skip fluff.`, label, len(articles), mcpCfg.SummaryLanguage()),
 					"context":  sb.String(),
 				})
 				if err != nil {

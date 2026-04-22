@@ -95,9 +95,23 @@ func (d *DB) ListRecentArticles(groupID *int64, limit int) ([]Article, error) {
 
 // ListTodayArticles returns all articles published or created today (local time).
 func (d *DB) ListTodayArticles() ([]Article, error) {
+	return d.listArticlesByDateRange(0, 1)
+}
+
+// ListYesterdayArticles returns all articles published or created yesterday (local time).
+func (d *DB) ListYesterdayArticles() ([]Article, error) {
+	return d.listArticlesByDateRange(-1, 1)
+}
+
+// ListWeekArticles returns all articles published or created in the last 7 days (local time).
+func (d *DB) ListWeekArticles() ([]Article, error) {
+	return d.listArticlesByDateRange(-6, 7)
+}
+
+func (d *DB) listArticlesByDateRange(daysOffset, duration int) ([]Article, error) {
 	now := time.Now()
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	endOfDay := startOfDay.Add(24 * time.Hour)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, daysOffset)
+	end := start.AddDate(0, 0, duration)
 	rows, err := d.Query(`
 		SELECT a.id, a.feed_id, COALESCE(f.title, f.url),
 		       a.guid, a.title, COALESCE(a.link,''), COALESCE(a.summary,''),
@@ -106,7 +120,7 @@ func (d *DB) ListTodayArticles() ([]Article, error) {
 		JOIN feeds f ON f.id = a.feed_id
 		WHERE COALESCE(a.published_at, a.created_at) >= ? AND COALESCE(a.published_at, a.created_at) < ?
 		ORDER BY COALESCE(a.published_at, a.created_at) DESC`,
-		startOfDay.UTC(), endOfDay.UTC())
+		start, end)
 	if err != nil {
 		return nil, err
 	}

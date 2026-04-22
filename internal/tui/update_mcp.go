@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kumagaias/tailfeed/internal/api"
+	"github.com/kumagaias/tailfeed/internal/db"
 	"github.com/kumagaias/tailfeed/internal/mcp"
 )
 
@@ -24,12 +25,30 @@ type summaryHTMLMsg struct {
 
 // cmdSummaryToday summarises all articles published today via MCP or the tailfeed API.
 func (m *Model) cmdSummaryToday() (string, tea.Cmd) {
-	articles, err := m.db.ListTodayArticles()
+	return m.cmdSummaryPeriod("today")
+}
+
+// cmdSummaryPeriod summarises articles for the given period ("today", "yesterday", "week").
+func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
+	var articles []db.Article
+	var err error
+	var label string
+	switch period {
+	case "yesterday":
+		articles, err = m.db.ListYesterdayArticles()
+		label = "yesterday"
+	case "week":
+		articles, err = m.db.ListWeekArticles()
+		label = "last 7 days"
+	default:
+		articles, err = m.db.ListTodayArticles()
+		label = "today"
+	}
 	if err != nil {
-		return "summary today: " + err.Error(), nil
+		return "summary " + period + ": " + err.Error(), nil
 	}
 	if len(articles) == 0 {
-		return "summary today: no articles today", nil
+		return "summary " + period + ": no articles for " + label, nil
 	}
 
 	mcpCfg, err := mcp.Load()
@@ -42,13 +61,13 @@ func (m *Model) cmdSummaryToday() (string, tea.Cmd) {
 			sb.WriteString(fmt.Sprintf("## %s\nURL: %s\n%s\n\n", a.Title, a.Link, a.Summary))
 		}
 		args := map[string]any{
-			"question": fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize today's %d articles in %s for a technical audience. For each article: one-line TL;DR, key technical points as bullet list. End with a "## Today's Signal" section: 2-3 sentences on trends worth watching. Be concise, skip fluff.`, len(articles), mcpCfg.SummaryLanguage()),
+			"question": fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize %s's %d articles in %s for a technical audience. For each article: one-line TL;DR, key technical points as bullet list. End with a "## Today's Signal" section: 2-3 sentences on trends worth watching. Be concise, skip fluff.`, label, len(articles), mcpCfg.SummaryLanguage()),
 			"context":  sb.String(),
 		}
-		return fmt.Sprintf("summarising %d articles…", len(articles)), func() tea.Msg {
+		return fmt.Sprintf("summarising %d articles (%s)…", len(articles), label), func() tea.Msg {
 			text, err := mcp.Call(mcpCfg, args)
 			if err != nil {
-				return mcpResultMsg{text: "summary today error: " + err.Error()}
+				return mcpResultMsg{text: "summary " + period + " error: " + err.Error()}
 			}
 			path, htmlErr := writeSummaryHTML(text, articles)
 			if htmlErr == nil {
@@ -62,14 +81,14 @@ func (m *Model) cmdSummaryToday() (string, tea.Cmd) {
 	for i, a := range articles {
 		apiArticles[i] = api.SummaryArticle{Title: a.Title, URL: a.Link, Summary: a.Summary}
 	}
-	return fmt.Sprintf("summarising %d articles…", len(articles)), func() tea.Msg {
+	return fmt.Sprintf("summarising %d articles (%s)…", len(articles), label), func() tea.Msg {
 		apiCfg, err := api.LoadOrRegister()
 		if err != nil {
 			return mcpResultMsg{text: "api: " + err.Error()}
 		}
 		text, err := api.Summary(apiCfg.UserKey, apiArticles, "Japanese")
 		if err != nil {
-			return mcpResultMsg{text: "summary today error: " + err.Error()}
+			return mcpResultMsg{text: "summary " + period + " error: " + err.Error()}
 		}
 		path, htmlErr := writeSummaryHTML(text, articles)
 		if htmlErr == nil {

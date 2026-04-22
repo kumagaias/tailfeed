@@ -42,8 +42,11 @@ func (m *Model) execCommand(raw string) (string, tea.Cmd) {
 		}
 		return m.cmdSuggestInput()
 	case "summary":
-		if len(parts) > 1 && parts[1] == "today" {
-			return m.cmdSummaryToday()
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "today", "yesterday", "week":
+				return m.cmdSummaryPeriod(parts[1])
+			}
 		}
 		return m.cmdMCP("summary", parts[1:])
 	case "mcp":
@@ -189,6 +192,8 @@ func (m *Model) cmdHelp() string {
 		"  suggest               suggest related feeds (mcp required)",
 		"  summary               summarize current article (mcp required)",
 		"  summary today         summarize all articles from today (mcp required)",
+		"  summary yesterday     summarize all articles from yesterday (mcp required)",
+		"  summary week          summarize articles from the last 7 days (mcp required)",
 		"  usage                  show plan and remaining API quota",
 		"  mcp set <cmd> [args...]  register MCP server",
 		"  mcp list              list configured MCP server",
