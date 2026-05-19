@@ -221,6 +221,48 @@ func TestArticleSaveAndList(t *testing.T) {
 	}
 }
 
+func TestArticleSaveDuplicateLink(t *testing.T) {
+	d := openTestDB(t)
+	f1, _ := d.AddFeed("https://example.com/feed.rss", nil)
+	f2, _ := d.AddFeed("https://mirror.example.com/feed.rss", nil)
+
+	first := &db.Article{
+		FeedID: f1.ID,
+		GUID:   "item-1",
+		Title:  "Hello World",
+		Link:   "https://example.com/hello",
+	}
+	saved, err := d.SaveArticle(first)
+	if err != nil {
+		t.Fatalf("SaveArticle first: %v", err)
+	}
+	if !saved {
+		t.Fatal("expected first article to be saved")
+	}
+
+	duplicate := &db.Article{
+		FeedID: f2.ID,
+		GUID:   "different-guid",
+		Title:  "Hello World Again",
+		Link:   "https://example.com/hello",
+	}
+	saved, err = d.SaveArticle(duplicate)
+	if err != nil {
+		t.Fatalf("SaveArticle duplicate link: %v", err)
+	}
+	if saved {
+		t.Fatal("expected duplicate link to be ignored")
+	}
+
+	articles, err := d.ListArticles(nil, 50, 0)
+	if err != nil {
+		t.Fatalf("ListArticles: %v", err)
+	}
+	if len(articles) != 1 {
+		t.Fatalf("expected 1 article, got %d", len(articles))
+	}
+}
+
 func TestArticleMarkRead(t *testing.T) {
 	d := openTestDB(t)
 	f, _ := d.AddFeed("https://example.com/rss", nil)

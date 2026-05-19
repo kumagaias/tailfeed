@@ -21,8 +21,19 @@ type Article struct {
 	CreatedAt   time.Time
 }
 
-// SaveArticle inserts an article, silently ignoring duplicates (GUID collision).
+// SaveArticle inserts an article, silently ignoring duplicates.
 func (d *DB) SaveArticle(a *Article) (saved bool, err error) {
+	if a.Link != "" {
+		var existingID int64
+		err := d.QueryRow(`SELECT id FROM articles WHERE link = ? LIMIT 1`, a.Link).Scan(&existingID)
+		if err == nil {
+			return false, nil
+		}
+		if err != sql.ErrNoRows {
+			return false, fmt.Errorf("check duplicate article link: %w", err)
+		}
+	}
+
 	res, err := d.Exec(
 		`INSERT OR IGNORE INTO articles (feed_id, guid, title, link, summary, published_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
