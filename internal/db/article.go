@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"time"
 )
 
@@ -120,7 +121,10 @@ func (d *DB) ListWeekArticles() ([]Article, error) {
 }
 
 func (d *DB) listArticlesByDateRange(daysOffset, duration int) ([]Article, error) {
-	now := time.Now()
+	return d.listArticlesByDateRangeAt(time.Now(), daysOffset, duration)
+}
+
+func (d *DB) listArticlesByDateRangeAt(now time.Time, daysOffset, duration int) ([]Article, error) {
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, daysOffset)
 	end := start.AddDate(0, 0, duration)
 	rows, err := d.Query(`
@@ -129,14 +133,34 @@ func (d *DB) listArticlesByDateRange(daysOffset, duration int) ([]Article, error
 		       a.published_at, a.is_read, a.is_stocked, a.created_at
 		FROM articles a
 		JOIN feeds f ON f.id = a.feed_id
-		WHERE COALESCE(a.published_at, a.created_at) >= ? AND COALESCE(a.published_at, a.created_at) < ?
-		ORDER BY COALESCE(a.published_at, a.created_at) DESC`,
-		start, end)
+		ORDER BY COALESCE(a.published_at, a.created_at) DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanArticles(rows)
+	articles, err := scanArticles(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := articles[:0]
+	for _, a := range articles {
+		t := articleTime(a)
+		if !t.Before(start) && t.Before(end) {
+			filtered = append(filtered, a)
+		}
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return articleTime(filtered[i]).After(articleTime(filtered[j]))
+	})
+	return filtered, nil
+}
+
+func articleTime(a Article) time.Time {
+	if a.PublishedAt != nil {
+		return *a.PublishedAt
+	}
+	return a.CreatedAt
 }
 
 // ListStockedArticles returns articles marked as stocked (favourites).
