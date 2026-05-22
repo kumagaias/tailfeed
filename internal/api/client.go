@@ -111,6 +111,7 @@ type summaryRequest struct {
 	UserKey  string           `json:"user_key"`
 	Articles []SummaryArticle `json:"articles"`
 	Language string           `json:"language,omitempty"`
+	Theme    string           `json:"theme,omitempty"`
 }
 
 type summaryResponse struct {
@@ -119,12 +120,12 @@ type summaryResponse struct {
 
 // UsageInfo holds plan and remaining-call information returned by /v1/usage.
 type UsageInfo struct {
-	Plan              string `json:"plan"`
-	SummaryRemaining  int    `json:"summary_remaining"`
-	SummaryLimit      int    `json:"summary_limit"`
-	SuggestRemaining  int    `json:"suggest_remaining"`
-	SuggestLimit      int    `json:"suggest_limit"`
-	ResetAt           string `json:"reset_at"` // RFC3339 date, e.g. "2026-04-18"
+	Plan             string `json:"plan"`
+	SummaryRemaining int    `json:"summary_remaining"`
+	SummaryLimit     int    `json:"summary_limit"`
+	SuggestRemaining int    `json:"suggest_remaining"`
+	SuggestLimit     int    `json:"suggest_limit"`
+	ResetAt          string `json:"reset_at"` // RFC3339 date, e.g. "2026-04-18"
 }
 
 // Usage calls GET /v1/usage and returns the current plan and remaining quota.
@@ -150,11 +151,12 @@ func Usage(userKey string) (*UsageInfo, error) {
 }
 
 // Summary calls POST /v1/summary and returns the generated summary text.
-func Summary(userKey string, articles []SummaryArticle, language string) (string, error) {
+func Summary(userKey string, articles []SummaryArticle, language string, theme string) (string, error) {
 	req := summaryRequest{
 		UserKey:  userKey,
 		Articles: articles,
 		Language: language,
+		Theme:    theme,
 	}
 	payload, err := json.Marshal(req)
 	if err != nil {

@@ -23,13 +23,14 @@ var (
 	bulletRE      = regexp.MustCompile(`^\s+-\s+`)
 )
 
-func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxContextRunes int) (string, error) {
+func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxContextRunes int, theme string) (string, error) {
 	if maxContextRunes <= 0 {
 		maxContextRunes = DefaultMaxContextRunes
 	}
 
 	var out []string
 	var executive []string
+	var important []string
 	pending := append([]db.Article(nil), articles...)
 	nextNumber := 1
 
@@ -41,7 +42,7 @@ func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxC
 		}
 
 		text, err := mcp.Call(cfg, map[string]any{
-			"question": prompt(label, len(chunk), cfg.SummaryLanguage()),
+			"question": prompt(label, len(chunk), cfg.SummaryLanguage(), theme),
 			"context":  buildContext(chunk),
 		})
 		if err != nil {
@@ -50,6 +51,9 @@ func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxC
 
 		if exec := extractExecutiveSummary(text); exec != "" {
 			executive = append(executive, exec)
+		}
+		if imp := extractMarkdownSection(text, "Important Articles"); imp != "" {
+			important = append(important, imp)
 		}
 
 		normalized, completed := completeArticleBlocks(text, chunk, nextNumber)
@@ -70,24 +74,41 @@ func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxC
 
 	body := strings.Join(out, "\n\n")
 	if len(executive) == 0 {
-		return body, nil
+		if len(important) == 0 {
+			return body, nil
+		}
+		return "## Important Articles\n" + strings.Join(important, "\n") + "\n\n" + body, nil
 	}
-	return "## Executive Summary\n" + strings.Join(executive, "\n") + "\n\n" + body, nil
+	result := "## Executive Summary\n" + strings.Join(executive, "\n")
+	if len(important) > 0 {
+		result += "\n\n## Important Articles\n" + strings.Join(important, "\n")
+	}
+	return result + "\n\n" + body, nil
 }
 
-func prompt(label string, articleCount int, language string) string {
+func prompt(label string, articleCount int, language string, theme string) string {
+	theme = strings.TrimSpace(theme)
+	themeLine := "No user theme is set."
+	if theme != "" {
+		themeLine = fmt.Sprintf("User theme: %s. Use it to prioritize the executive summary and important articles, but still include every article exactly once.", theme)
+	}
 	return fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize %s's %d articles in %s for a technical audience.
+%s
 Write all content in Japanese, except keep the heading "Executive Summary" in English.
-Start with an executive summary section at the very top. Then include every article exactly once. Keep the whole response compact. Use exactly this Markdown shape:
+Start with an executive summary section at the very top, then an Important Articles section with the most important 2-3 article links. Then include every article exactly once. Keep the whole response compact. Use exactly this Markdown shape:
 ## Executive Summary
 - Japanese executive summary point 1, max 55 characters
 - Japanese executive summary point 2, max 55 characters
+
+## Important Articles
+- [Article title](article URL) - Japanese reason, max 45 characters
+- [Article title](article URL) - Japanese reason, max 45 characters
 
 1. [Article title](article URL)
   - Japanese summary sentence, max 60 characters. Do not write a label like "Summary", "TL;DR", or "要約".
     - Japanese key technical point 1, max 45 characters
     - Japanese key technical point 2, max 45 characters
-Do not add any other sections.`, label, articleCount, language)
+Do not add any other sections.`, label, articleCount, language, themeLine)
 }
 
 func buildContext(articles []db.Article) string {
@@ -164,12 +185,16 @@ func bulletCount(lines []string) int {
 }
 
 func extractExecutiveSummary(text string) string {
+	return extractMarkdownSection(text, "Executive Summary")
+}
+
+func extractMarkdownSection(text, heading string) string {
 	lines := strings.Split(text, "\n")
 	var out []string
 	inSection := false
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.EqualFold(trimmed, "## Executive Summary") || strings.EqualFold(trimmed, "# Executive Summary") {
+		if markdownHeadingEquals(trimmed, heading) {
 			inSection = true
 			continue
 		}
@@ -189,6 +214,12 @@ func extractExecutiveSummary(text string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+func markdownHeadingEquals(line, heading string) bool {
+	line = strings.TrimSpace(strings.TrimLeft(line, "#"))
+	line = strings.TrimSpace(line)
+	return strings.EqualFold(line, heading)
 }
 
 func fallbackBlocks(articles []db.Article, startNumber int) string {

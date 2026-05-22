@@ -15,12 +15,12 @@ import (
 type mode int
 
 const (
-	modeNormal   mode = iota
-	modeCommand       // "/" command palette active
-	modeFeedList      // feed list overlay
-	modeSuggest       // suggest feed selection overlay
-	modeFind          // incremental keyword search
-	modeSuggestInput  // free-text input for suggest theme
+	modeNormal       mode = iota
+	modeCommand           // "/" command palette active
+	modeFeedList          // feed list overlay
+	modeSuggest           // suggest feed selection overlay
+	modeFind              // incremental keyword search
+	modeSuggestInput      // free-text input for suggest theme
 )
 
 const articlesLimit = 1000
@@ -29,7 +29,8 @@ const articlesLimit = 1000
 const articlesPageSize = 50
 
 // linesPerCard is the fixed visual height of every card:
-//   border(1) + title(1) + meta(1) + summary(1) + border(1) = 5
+//
+//	border(1) + title(1) + meta(1) + summary(1) + border(1) = 5
 //
 // linesPerSlot includes the blank separator line between cards.
 const linesPerCard = 5
@@ -54,14 +55,14 @@ type suggestFeed struct {
 
 // Model is the root Bubble Tea model.
 type Model struct {
-	db       *db.DB
-	poller   *feed.Poller
-	width    int
-	height   int
-	mode     mode
-	tabs     []groupTab
-	tabIdx   int
-	articles []db.Article
+	db         *db.DB
+	poller     *feed.Poller
+	width      int
+	height     int
+	mode       mode
+	tabs       []groupTab
+	tabIdx     int
+	articles   []db.Article
 	cursor     int
 	viewport   viewport.Model
 	input      textinput.Model
@@ -109,7 +110,7 @@ func commandPlaceholder(withGroupDel bool) string {
 	if withGroupDel {
 		base += " <name>"
 	}
-	base += "  |  suggest  |  summary  |  summary today"
+	base += "  |  suggest  |  summary  |  summary today  |  summary theme"
 	return base
 }
 func New(database *db.DB, poller *feed.Poller) (*Model, error) {

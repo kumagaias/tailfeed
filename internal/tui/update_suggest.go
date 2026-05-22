@@ -39,7 +39,7 @@ type suggestValidatedMsg struct{ feeds []suggestFeed }
 // cmdSuggestInput enters the free-text suggest input mode.
 func (m *Model) cmdSuggestInput() (string, tea.Cmd) {
 	m.mode = modeSuggestInput
-	m.input.Placeholder = "テーマや欲しいRSSの種類を入力… (enter で検索, esc でキャンセル)"
+	m.input.Placeholder = "Describe the RSS feeds you want... (enter to search, esc to cancel)"
 	m.input.SetValue("")
 	m.input.Focus()
 	m.resizeViewport()

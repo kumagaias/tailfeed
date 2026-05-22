@@ -233,7 +233,7 @@ func listCmd() *cobra.Command {
 }
 
 func summaryCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "summary [today|yesterday|week]",
 		Short: "Summarise articles via MCP (or tailfeed API) and print to stdout",
 		Args:  cobra.MaximumNArgs(1),
@@ -269,6 +269,10 @@ func summaryCmd() *cobra.Command {
 				fmt.Printf("No articles for %s.\n", label)
 				return nil
 			}
+			summaryCfg, err := summary.LoadConfig()
+			if err != nil {
+				return err
+			}
 			fmt.Fprintf(os.Stderr, "Summarising %d articles (%s)…\n", len(articles), label)
 
 			var text string
@@ -277,7 +281,7 @@ func summaryCmd() *cobra.Command {
 				return err
 			}
 			if mcpCfg != nil {
-				text, err = summary.SummarizeWithMCP(mcpCfg, label, articles, summary.DefaultMaxContextRunes)
+				text, err = summary.SummarizeWithMCP(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme)
 				if err != nil {
 					return err
 				}
@@ -290,7 +294,7 @@ func summaryCmd() *cobra.Command {
 				for i, a := range articles {
 					apiArticles[i] = api.SummaryArticle{Title: a.Title, URL: a.Link, Summary: plainSummary(a.Summary, 300)}
 				}
-				text, err = api.Summary(apiCfg.UserKey, apiArticles, "Japanese")
+				text, err = api.Summary(apiCfg.UserKey, apiArticles, "Japanese", summaryCfg.Theme)
 				if err != nil {
 					return err
 				}
@@ -313,6 +317,38 @@ func summaryCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	themeCmd := &cobra.Command{
+		Use:   "theme [text]",
+		Short: "Set or show the saved summary theme",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, args []string) error {
+			cfg, err := summary.LoadConfig()
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				if cfg.Theme == "" {
+					fmt.Println("summary theme: (none)")
+				} else {
+					fmt.Printf("summary theme: %s\n", cfg.Theme)
+				}
+				return nil
+			}
+			cfg.Theme = strings.TrimSpace(strings.Join(args, " "))
+			if err := summary.SaveConfig(cfg); err != nil {
+				return err
+			}
+			if cfg.Theme == "" {
+				fmt.Println("summary theme cleared")
+			} else {
+				fmt.Printf("summary theme saved: %s\n", cfg.Theme)
+			}
+			return nil
+		},
+	}
+	cmd.AddCommand(themeCmd)
+	return cmd
 }
 
 func usageCmd() *cobra.Command {

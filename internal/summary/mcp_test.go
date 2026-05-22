@@ -56,12 +56,41 @@ func TestExtractExecutiveSummary(t *testing.T) {
 	}
 }
 
+func TestExtractImportantArticles(t *testing.T) {
+	text := `## Executive Summary
+- 全体傾向
+
+## Important Articles
+- [Important](https://example.com/i) - 影響が大きい
+- [Second](https://example.com/s) - 実装判断に関係
+
+1. [wrong](https://wrong.example/1)
+  - Summary
+    - Point 1
+    - Point 2`
+
+	got := extractMarkdownSection(text, "Important Articles")
+	for _, want := range []string{
+		"- [Important](https://example.com/i) - 影響が大きい",
+		"- [Second](https://example.com/s) - 実装判断に関係",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in important articles, got:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "wrong") {
+		t.Fatalf("expected article list to be excluded, got:\n%s", got)
+	}
+}
+
 func TestPromptRequiresJapaneseExecutiveSummaryFirst(t *testing.T) {
-	got := prompt("today", 2, "Japanese")
+	got := prompt("today", 2, "Japanese", "AI infra")
 	for _, want := range []string{
 		`Write all content in Japanese`,
 		`## Executive Summary`,
-		`Start with an executive summary section at the very top.`,
+		`## Important Articles`,
+		`Start with an executive summary section at the very top`,
+		`User theme: AI infra`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in prompt, got:\n%s", want, got)

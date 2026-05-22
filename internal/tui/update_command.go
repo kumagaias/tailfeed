@@ -7,6 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/kumagaias/tailfeed/internal/summary"
 )
 
 // execCommand dispatches a parsed command string.
@@ -46,6 +48,8 @@ func (m *Model) execCommand(raw string) (string, tea.Cmd) {
 			switch parts[1] {
 			case "today", "yesterday", "week":
 				return m.cmdSummaryPeriod(parts[1])
+			case "theme":
+				return m.cmdSummaryTheme(parts[2:]), nil
 			}
 		}
 		return m.cmdMCP("summary", parts[1:])
@@ -194,6 +198,7 @@ func (m *Model) cmdHelp() string {
 		"  summary today         summarize all articles from today (mcp required)",
 		"  summary yesterday     summarize all articles from yesterday (mcp required)",
 		"  summary week          summarize articles from the last 7 days (mcp required)",
+		"  summary theme [text]  set or show the saved summary theme",
 		"  usage                  show plan and remaining API quota",
 		"  mcp set <cmd> [args...]  register MCP server",
 		"  mcp list              list configured MCP server",
@@ -207,6 +212,27 @@ func (m *Model) cmdHelp() string {
 	m.feedListCursor = 0
 	m.mode = modeFeedList
 	return ""
+}
+
+func (m *Model) cmdSummaryTheme(args []string) string {
+	cfg, err := summary.LoadConfig()
+	if err != nil {
+		return "summary config: " + err.Error()
+	}
+	if len(args) == 0 {
+		if cfg.Theme == "" {
+			return "summary theme: (none)"
+		}
+		return "summary theme: " + cfg.Theme
+	}
+	cfg.Theme = strings.TrimSpace(strings.Join(args, " "))
+	if err := summary.SaveConfig(cfg); err != nil {
+		return "summary config: " + err.Error()
+	}
+	if cfg.Theme == "" {
+		return "summary theme cleared"
+	}
+	return "summary theme saved: " + cfg.Theme
 }
 
 // cmdClear sets the pendingClear flag and shows a confirmation prompt.
