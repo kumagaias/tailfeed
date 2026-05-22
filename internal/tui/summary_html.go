@@ -42,14 +42,10 @@ func buildSummaryHTML(summaryText string, articles []db.Article) string {
   h2 { color: var(--accent); font-size: 1rem; margin: 2rem 0 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
   h3 { color: var(--fg); font-size: 0.95rem; margin: 1.5rem 0 0.5rem; }
   p { margin: 0.5rem 0; color: var(--fg); }
-  ul { margin: 0.5rem 0 0.5rem 1.5rem; }
+  ol, ul { margin: 0.5rem 0 0.5rem 1.5rem; }
   li { margin: 0.2rem 0; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .articles { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
-  .article { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 0.75rem; }
-  .article-title { font-weight: bold; }
-  .article-meta { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
   pre { white-space: pre-wrap; word-break: break-word; }
 </style>
 </head>
@@ -62,26 +58,6 @@ func buildSummaryHTML(summaryText string, articles []db.Article) string {
 
 	// Render summary markdown as simple HTML
 	b.WriteString(markdownToHTML(summaryText, articles))
-
-	// Article index with links
-	b.WriteString(`<div class="articles">` + "\n")
-	b.WriteString("<h2>📰 Articles</h2>\n")
-	for _, a := range articles {
-		b.WriteString(`<div class="article">` + "\n")
-		if a.Link != "" {
-			b.WriteString(fmt.Sprintf(`<div class="article-title"><a href="%s" target="_blank">%s</a></div>`+"\n",
-				htmlEscape(a.Link), htmlEscape(a.Title)))
-		} else {
-			b.WriteString(fmt.Sprintf(`<div class="article-title">%s</div>`+"\n", htmlEscape(a.Title)))
-		}
-		meta := a.FeedTitle
-		if a.PublishedAt != nil {
-			meta += " · " + a.PublishedAt.Local().Format("15:04")
-		}
-		b.WriteString(fmt.Sprintf(`<div class="article-meta">%s</div>`+"\n", htmlEscape(meta)))
-		b.WriteString("</div>\n")
-	}
-	b.WriteString("</div>\n")
 	b.WriteString("</body></html>\n")
 	return b.String()
 }
@@ -93,13 +69,13 @@ func markdownToHTML(md string, articles []db.Article) string {
 	titleURL := make(map[string]string, len(articles))
 	for _, a := range articles {
 		if a.Link != "" {
-			titleURL[strings.ToLower(a.Title)] = a.Link
+			titleURL[summaryHeadingKey(a.Title)] = a.Link
 		}
 	}
 
 	// findArticleURL returns the URL for a heading text if it matches an article title.
 	findArticleURL := func(heading string) string {
-		h := strings.ToLower(strings.TrimSpace(heading))
+		h := summaryHeadingKey(heading)
 		// Exact match first.
 		if u, ok := titleURL[h]; ok {
 			return u
@@ -115,49 +91,154 @@ func markdownToHTML(md string, articles []db.Article) string {
 
 	var b strings.Builder
 	lines := strings.Split(md, "\n")
-	inUL := false
+	lists := make([]listFrame, 0, 4)
 	for _, line := range lines {
+		if typ, indent, number, content, ok := parseListItem(line); ok {
+			closeListsTo(&b, &lists, typ, indent, number)
+			b.WriteString("<li>" + formatInline(content) + "\n")
+			continue
+		}
+
 		switch {
 		case strings.HasPrefix(line, "## "):
-			if inUL {
-				b.WriteString("</ul>\n")
-				inUL = false
-			}
+			closeAllLists(&b, &lists)
 			text := line[3:]
-			escaped := htmlEscape(text)
 			if u := findArticleURL(text); u != "" {
-				b.WriteString(`<h2><a href="` + htmlEscape(u) + `" target="_blank">` + escaped + `</a></h2>` + "\n")
+				b.WriteString(`<h2><a href="` + htmlEscape(u) + `" target="_blank">` + htmlEscape(text) + `</a></h2>` + "\n")
 			} else {
-				b.WriteString("<h2>" + autoLink(escaped) + "</h2>\n")
+				b.WriteString("<h2>" + formatInline(text) + "</h2>\n")
 			}
 		case strings.HasPrefix(line, "### "):
-			if inUL {
-				b.WriteString("</ul>\n")
-				inUL = false
-			}
-			b.WriteString("<h3>" + autoLink(htmlEscape(line[4:])) + "</h3>\n")
-		case strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* "):
-			if !inUL {
-				b.WriteString("<ul>\n")
-				inUL = true
-			}
-			b.WriteString("<li>" + autoLink(htmlEscape(line[2:])) + "</li>\n")
+			closeAllLists(&b, &lists)
+			b.WriteString("<h3>" + formatInline(line[4:]) + "</h3>\n")
 		case strings.TrimSpace(line) == "":
-			if inUL {
-				b.WriteString("</ul>\n")
-				inUL = false
-			}
+			closeAllLists(&b, &lists)
 			b.WriteString("\n")
 		default:
-			if inUL {
-				b.WriteString("</ul>\n")
-				inUL = false
-			}
-			b.WriteString("<p>" + autoLink(htmlEscape(line)) + "</p>\n")
+			closeAllLists(&b, &lists)
+			b.WriteString("<p>" + formatInline(line) + "</p>\n")
 		}
 	}
-	if inUL {
-		b.WriteString("</ul>\n")
+	closeAllLists(&b, &lists)
+	return b.String()
+}
+
+type listFrame struct {
+	typ    string
+	indent int
+}
+
+func parseListItem(line string) (string, int, int, string, bool) {
+	indent := 0
+	pos := 0
+	for pos < len(line) && (line[pos] == ' ' || line[pos] == '\t') {
+		if line[pos] == '\t' {
+			indent += 2
+		} else {
+			indent++
+		}
+		pos++
+	}
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
+		return "ul", indent, 0, strings.TrimSpace(trimmed[2:]), true
+	}
+
+	i := 0
+	for i < len(trimmed) && trimmed[i] >= '0' && trimmed[i] <= '9' {
+		i++
+	}
+	if i > 0 && i+1 < len(trimmed) && trimmed[i] == '.' && trimmed[i+1] == ' ' {
+		number := 1
+		_, _ = fmt.Sscanf(trimmed[:i], "%d", &number)
+		return "ol", indent, number, strings.TrimSpace(trimmed[i+2:]), true
+	}
+	return "", 0, 0, "", false
+}
+
+func closeListsTo(b *strings.Builder, lists *[]listFrame, typ string, indent int, number int) {
+	for len(*lists) > 0 {
+		top := (*lists)[len(*lists)-1]
+		if top.indent < indent || (top.indent == indent && top.typ == typ) {
+			break
+		}
+		b.WriteString("</li>\n</" + top.typ + ">\n")
+		*lists = (*lists)[:len(*lists)-1]
+	}
+	if len(*lists) == 0 || (*lists)[len(*lists)-1].indent < indent || (*lists)[len(*lists)-1].typ != typ {
+		if typ == "ol" && number > 1 {
+			b.WriteString(fmt.Sprintf(`<ol start="%d">`+"\n", number))
+		} else {
+			b.WriteString("<" + typ + ">\n")
+		}
+		*lists = append(*lists, listFrame{typ: typ, indent: indent})
+		return
+	}
+	b.WriteString("</li>\n")
+}
+
+func closeAllLists(b *strings.Builder, lists *[]listFrame) {
+	for len(*lists) > 0 {
+		top := (*lists)[len(*lists)-1]
+		b.WriteString("</li>\n</" + top.typ + ">\n")
+		*lists = (*lists)[:len(*lists)-1]
+	}
+}
+
+func summaryHeadingKey(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.Trim(s, "#*[]()「」『』\"'")
+	s = strings.TrimSpace(s)
+
+	for len(s) > 0 {
+		i := 0
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		if i == 0 || i >= len(s) {
+			break
+		}
+		switch s[i] {
+		case '.', ')', ':':
+			s = strings.TrimSpace(s[i+1:])
+			continue
+		}
+		break
+	}
+
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func formatInline(s string) string {
+	var b strings.Builder
+	for {
+		open := strings.Index(s, "[")
+		if open < 0 {
+			b.WriteString(autoLink(htmlEscape(s)))
+			break
+		}
+		close := strings.Index(s[open:], "](")
+		if close < 0 {
+			b.WriteString(autoLink(htmlEscape(s)))
+			break
+		}
+		close += open
+		end := strings.Index(s[close+2:], ")")
+		if end < 0 {
+			b.WriteString(autoLink(htmlEscape(s)))
+			break
+		}
+		end += close + 2
+
+		b.WriteString(autoLink(htmlEscape(s[:open])))
+		text := s[open+1 : close]
+		url := s[close+2 : end]
+		if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+			b.WriteString(`<a href="` + htmlEscape(url) + `" target="_blank">` + htmlEscape(text) + `</a>`)
+		} else {
+			b.WriteString(htmlEscape(s[open : end+1]))
+		}
+		s = s[end+1:]
 	}
 	return b.String()
 }

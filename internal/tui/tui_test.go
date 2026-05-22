@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kumagaias/tailfeed/internal/db"
 )
 
 // ── parseSuggestJSON ──────────────────────────────────────────────────────────
@@ -112,6 +114,49 @@ func TestWordWrap_emptyWidth(t *testing.T) {
 	s := "hello"
 	if got := wordWrap(s, 0); got != s {
 		t.Errorf("zero width should return original, got %q", got)
+	}
+}
+
+// ── summary HTML ─────────────────────────────────────────────────────────────
+
+func TestBuildSummaryHTML_linksSummaryHeadingsWithoutArticleIndex(t *testing.T) {
+	html := buildSummaryHTML("## 1. Example A\nTL;DR", []db.Article{
+		{Title: "Example A", Link: "https://example.com/a"},
+	})
+
+	if !strings.Contains(html, `<h2><a href="https://example.com/a" target="_blank">1. Example A</a></h2>`) {
+		t.Fatalf("expected summary heading to link to article, got:\n%s", html)
+	}
+	if strings.Contains(html, `<div class="articles">`) || strings.Contains(html, "📰 Articles") {
+		t.Fatalf("expected no separate article index, got:\n%s", html)
+	}
+	if got := strings.Count(html, `href="https://example.com/a"`); got != 1 {
+		t.Fatalf("expected one article link, got %d", got)
+	}
+}
+
+func TestBuildSummaryHTML_rendersOrderedMarkdownLinks(t *testing.T) {
+	html := buildSummaryHTML("1. [Example A](https://example.com/a)\n  - Concise summary\n    - Point 1\n    - Point 2", nil)
+
+	for _, want := range []string{
+		"<ol>",
+		`<li><a href="https://example.com/a" target="_blank">Example A</a>`,
+		"<ul>",
+		"<li>Concise summary",
+		"<li>Point 1",
+		"<li>Point 2",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected %q in html, got:\n%s", want, html)
+		}
+	}
+}
+
+func TestBuildSummaryHTML_preservesOrderedListStart(t *testing.T) {
+	html := buildSummaryHTML("2. [Example B](https://example.com/b)\n  - Concise summary\n    - Point 1\n    - Point 2", nil)
+
+	if !strings.Contains(html, `<ol start="2">`) {
+		t.Fatalf("expected ordered list start to be preserved, got:\n%s", html)
 	}
 }
 

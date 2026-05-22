@@ -15,6 +15,7 @@ import (
 	"github.com/kumagaias/tailfeed/internal/api"
 	"github.com/kumagaias/tailfeed/internal/db"
 	"github.com/kumagaias/tailfeed/internal/mcp"
+	"github.com/kumagaias/tailfeed/internal/summary"
 	"github.com/kumagaias/tailfeed/internal/tui"
 )
 
@@ -276,14 +277,7 @@ func summaryCmd() *cobra.Command {
 				return err
 			}
 			if mcpCfg != nil {
-				var sb strings.Builder
-				for _, a := range articles {
-					sb.WriteString(fmt.Sprintf("## %s\nURL: %s\n%s\n\n", a.Title, a.Link, a.Summary))
-				}
-				text, err = mcp.Call(mcpCfg, map[string]any{
-					"question": fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize %s's %d articles in %s for a technical audience. For each article: one-line TL;DR, key technical points as bullet list. End with a "## Today's Signal" section: 2-3 sentences on trends worth watching. Be concise, skip fluff.`, label, len(articles), mcpCfg.SummaryLanguage()),
-					"context":  sb.String(),
-				})
+				text, err = summary.SummarizeWithMCP(mcpCfg, label, articles, summary.DefaultMaxContextRunes)
 				if err != nil {
 					return err
 				}

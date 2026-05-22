@@ -9,6 +9,7 @@ import (
 	"github.com/kumagaias/tailfeed/internal/api"
 	"github.com/kumagaias/tailfeed/internal/db"
 	"github.com/kumagaias/tailfeed/internal/mcp"
+	"github.com/kumagaias/tailfeed/internal/summary"
 )
 
 // mcpResultMsg carries the result of an async MCP tools/call.
@@ -56,16 +57,8 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 		return "mcp: " + err.Error(), nil
 	}
 	if mcpCfg != nil {
-		var sb strings.Builder
-		for _, a := range articles {
-			sb.WriteString(fmt.Sprintf("## %s\nURL: %s\n%s\n\n", a.Title, a.Link, a.Summary))
-		}
-		args := map[string]any{
-			"question": fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize %s's %d articles in %s for a technical audience. For each article: one-line TL;DR, key technical points as bullet list. End with a "## Today's Signal" section: 2-3 sentences on trends worth watching. Be concise, skip fluff.`, label, len(articles), mcpCfg.SummaryLanguage()),
-			"context":  sb.String(),
-		}
 		return fmt.Sprintf("summarising %d articles (%s)…", len(articles), label), func() tea.Msg {
-			text, err := mcp.Call(mcpCfg, args)
+			text, err := summary.SummarizeWithMCP(mcpCfg, label, articles, summary.DefaultMaxContextRunes)
 			if err != nil {
 				return mcpResultMsg{text: "summary " + period + " error: " + err.Error()}
 			}
@@ -114,7 +107,7 @@ func (m *Model) cmdMCP(cmdName string, _ []string) (string, tea.Cmd) {
 			args := map[string]any{
 				"question": `You are a feed curator for engineers. Based on the article below, suggest 20 RSS feeds a senior developer would actually subscribe to — think official blogs, release notes, technical deep-dives, not generic news. Return ONLY valid JSON, no prose:
 {"feeds":[{"title":"Feed Name","url":"https://...","description":"one-line description"},{"title":"Feed Name","url":"https://...","description":"one-line description"}]}`,
-				"context": fmt.Sprintf("タイトル: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
+				"context": fmt.Sprintf("Title: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
 			}
 			return "suggesting feeds…", func() tea.Msg {
 				text, err := mcp.Call(mcpCfg, args)
@@ -131,7 +124,7 @@ func (m *Model) cmdMCP(cmdName string, _ []string) (string, tea.Cmd) {
 		question := fmt.Sprintf(`Summarize this article in %s for a senior engineer. Format: TL;DR (1 sentence), Key Points (bullet list of technical takeaways), Why It Matters (1-2 sentences on practical impact). No filler.`, mcpCfg.SummaryLanguage())
 		args := map[string]any{
 			"question": question,
-			"context":  fmt.Sprintf("タイトル: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
+			"context":  fmt.Sprintf("Title: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
 		}
 		return fmt.Sprintf("running %s…", cmdName), func() tea.Msg {
 			text, err := mcp.Call(mcpCfg, args)
