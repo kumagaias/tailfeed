@@ -45,8 +45,18 @@ func SummarizeWithAPI(userKey, label string, articles []db.Article, language, th
 		if err != nil {
 			return "", err
 		}
-		if strings.TrimSpace(text) != "" {
-			out = append(out, strings.TrimSpace(text))
+		normalized, chunkCompleted := completeArticleBlocks(text, chunk, completed+1)
+		if chunkCompleted > 0 {
+			out = append(out, normalized)
+			if chunkCompleted > len(chunk) {
+				chunkCompleted = len(chunk)
+			}
+			completed += chunkCompleted
+			pending = append(append([]db.Article(nil), chunk[chunkCompleted:]...), rest...)
+			continue
+		}
+		if trimmed := strings.TrimSpace(text); trimmed != "" {
+			out = append(out, trimmed)
 		}
 		completed += len(chunk)
 		pending = rest

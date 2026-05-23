@@ -189,6 +189,9 @@ func completeArticleBlocks(text string, articles []db.Article, startNumber int) 
 		}
 		out.WriteString(fmt.Sprintf("%d. [%s](%s)\n", startNumber+completed, articles[i].Title, articles[i].Link))
 		for _, line := range block[1:] {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				break
+			}
 			if isArticleURLLine(line, articles[i].Link) {
 				continue
 			}

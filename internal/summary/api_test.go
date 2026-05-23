@@ -16,7 +16,18 @@ func TestSummarizeWithAPICapsCallsAtThree(t *testing.T) {
 	calls := 0
 	apiSummary = func(_ string, articles []api.SummaryArticle, _ string, _ string) (string, error) {
 		calls++
-		return fmt.Sprintf("chunk %d: %d articles", calls, len(articles)), nil
+		var b strings.Builder
+		for i, a := range articles {
+			if i > 0 {
+				b.WriteString("\n\n")
+			}
+			b.WriteString(fmt.Sprintf("%d. [%s](%s)\n", i+1, a.Title, a.URL))
+			b.WriteString("  - 要約\n")
+			b.WriteString("    - ポイント1\n")
+			b.WriteString("    - ポイント2\n")
+		}
+		b.WriteString("\n\n## Today's Signal\n不要なセクション")
+		return b.String(), nil
 	}
 
 	articles := make([]db.Article, MaxArticlesPerAttempt*MaxAPIAttempts+2)
@@ -34,6 +45,12 @@ func TestSummarizeWithAPICapsCallsAtThree(t *testing.T) {
 	}
 	if calls != MaxAPIAttempts {
 		t.Fatalf("api calls = %d, want %d", calls, MaxAPIAttempts)
+	}
+	if strings.Contains(got, "Today's Signal") {
+		t.Fatalf("expected non-article section to be removed, got:\n%s", got)
+	}
+	if !strings.Contains(got, "9. [Article 9](https://example.com/9)") {
+		t.Fatalf("expected second API chunk to be renumbered globally, got:\n%s", got)
 	}
 	if !strings.Contains(got, "25. [Article 25](https://example.com/25)") {
 		t.Fatalf("expected local fallback for articles beyond three API calls, got:\n%s", got)
