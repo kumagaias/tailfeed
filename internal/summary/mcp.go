@@ -24,9 +24,18 @@ var (
 )
 
 func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxContextRunes int, theme string) (string, error) {
+	return SummarizeWithMCPInLanguage(cfg, label, articles, maxContextRunes, theme, cfg.SummaryLanguage())
+}
+
+func SummarizeWithMCPInLanguage(cfg *mcp.Config, label string, articles []db.Article, maxContextRunes int, theme string, language string) (string, error) {
 	if maxContextRunes <= 0 {
 		maxContextRunes = DefaultMaxContextRunes
 	}
+	language = strings.TrimSpace(language)
+	if language == "" {
+		language = "Japanese"
+	}
+	executiveHeading, importantHeading := summaryHeadings(language)
 
 	var out []string
 	var executive []string
@@ -42,7 +51,7 @@ func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxC
 		}
 
 		text, err := mcp.Call(cfg, map[string]any{
-			"question": prompt(label, len(chunk), cfg.SummaryLanguage(), theme),
+			"question": prompt(label, len(chunk), language, theme),
 			"context":  buildContext(chunk),
 		})
 		if err != nil {
@@ -52,7 +61,7 @@ func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxC
 		if exec := extractExecutiveSummary(text); exec != "" {
 			executive = append(executive, exec)
 		}
-		if imp := extractMarkdownSection(text, "Important Articles"); imp != "" {
+		if imp := extractImportantArticles(text); imp != "" {
 			important = append(important, imp)
 		}
 
@@ -77,11 +86,11 @@ func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxC
 		if len(important) == 0 {
 			return body, nil
 		}
-		return "## Important Articles\n" + strings.Join(important, "\n") + "\n\n" + body, nil
+		return "## " + importantHeading + "\n" + strings.Join(important, "\n") + "\n\n" + body, nil
 	}
-	result := "## Executive Summary\n" + strings.Join(executive, "\n")
+	result := "## " + executiveHeading + "\n" + strings.Join(executive, "\n")
 	if len(important) > 0 {
-		result += "\n\n## Important Articles\n" + strings.Join(important, "\n")
+		result += "\n\n## " + importantHeading + "\n" + strings.Join(important, "\n")
 	}
 	return result + "\n\n" + body, nil
 }
@@ -92,23 +101,38 @@ func prompt(label string, articleCount int, language string, theme string) strin
 	if theme != "" {
 		themeLine = fmt.Sprintf("User theme: %s. Use it to prioritize the executive summary and important articles, but still include every article exactly once.", theme)
 	}
+	executiveHeading, importantHeading := summaryHeadings(language)
 	return fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize %s's %d articles in %s for a technical audience.
 %s
-Write all content in Japanese, except keep the heading "Executive Summary" in English.
-Start with an executive summary section at the very top, then an Important Articles section with the most important 2-3 article links. Then include every article exactly once. Keep the whole response compact. Use exactly this Markdown shape:
-## Executive Summary
-- Japanese executive summary point 1, max 55 characters
-- Japanese executive summary point 2, max 55 characters
+Write all generated summary content in %s, including section headings and bullet text.
+Keep original article titles exactly as provided, even when they are in another language.
+Start with a %s section at the very top, then a %s section with the most important 2-3 article links. Then include every article exactly once. Keep the whole response compact. Use exactly this Markdown shape:
+## %s
+- Executive summary point 1 in %s, max 55 characters
+- Executive summary point 2 in %s, max 55 characters
 
-## Important Articles
-- [Article title](article URL) - Japanese reason, max 45 characters
-- [Article title](article URL) - Japanese reason, max 45 characters
+## %s
+- [Original article title](article URL) - reason in %s, max 45 characters
+- [Original article title](article URL) - reason in %s, max 45 characters
 
-1. [Article title](article URL)
-  - Japanese summary sentence, max 60 characters. Do not write a label like "Summary", "TL;DR", or "要約".
-    - Japanese key technical point 1, max 45 characters
-    - Japanese key technical point 2, max 45 characters
-Do not add any other sections.`, label, articleCount, language, themeLine)
+1. [Original article title](article URL)
+  - Summary sentence in %s, max 60 characters. Do not write a label like "Summary", "TL;DR", or "要約".
+    - Key technical point 1 in %s, max 45 characters
+    - Key technical point 2 in %s, max 45 characters
+Do not write a separate URL line under article titles; the article title Markdown link is the URL.
+Do not add any other sections.`, label, articleCount, language, themeLine, language, executiveHeading, importantHeading, executiveHeading, language, language, importantHeading, language, language, language, language, language)
+}
+
+func summaryHeadings(language string) (string, string) {
+	if isJapaneseLanguage(language) {
+		return "今日の要点", "重要記事"
+	}
+	return "Executive Summary", "Important Articles"
+}
+
+func isJapaneseLanguage(language string) bool {
+	language = strings.ToLower(strings.TrimSpace(language))
+	return language == "" || strings.Contains(language, "japanese") || strings.Contains(language, "日本")
 }
 
 func buildContext(articles []db.Article) string {
@@ -165,6 +189,9 @@ func completeArticleBlocks(text string, articles []db.Article, startNumber int) 
 		}
 		out.WriteString(fmt.Sprintf("%d. [%s](%s)\n", startNumber+completed, articles[i].Title, articles[i].Link))
 		for _, line := range block[1:] {
+			if isArticleURLLine(line, articles[i].Link) {
+				continue
+			}
 			out.WriteString(line)
 			out.WriteByte('\n')
 		}
@@ -185,7 +212,20 @@ func bulletCount(lines []string) int {
 }
 
 func extractExecutiveSummary(text string) string {
-	return extractMarkdownSection(text, "Executive Summary")
+	return extractFirstMarkdownSection(text, "今日の要点", "Executive Summary")
+}
+
+func extractImportantArticles(text string) string {
+	return extractFirstMarkdownSection(text, "重要記事", "Important Articles")
+}
+
+func extractFirstMarkdownSection(text string, headings ...string) string {
+	for _, heading := range headings {
+		if section := extractMarkdownSection(text, heading); section != "" {
+			return section
+		}
+	}
+	return ""
 }
 
 func extractMarkdownSection(text, heading string) string {
@@ -222,7 +262,23 @@ func markdownHeadingEquals(line, heading string) bool {
 	return strings.EqualFold(line, heading)
 }
 
+func isArticleURLLine(line, articleURL string) bool {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "- ")
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "URL:")
+	line = strings.TrimPrefix(line, "Url:")
+	line = strings.TrimPrefix(line, "url:")
+	line = strings.TrimSpace(line)
+	line = strings.Trim(line, "<>()[]")
+	return articleURL != "" && line == articleURL
+}
+
 func fallbackBlocks(articles []db.Article, startNumber int) string {
+	return fallbackBlocksWithReason(articles, startNumber, "MCP の出力上限により自動補完しました。")
+}
+
+func fallbackBlocksWithReason(articles []db.Article, startNumber int, reason string) string {
 	var b strings.Builder
 	for i, a := range articles {
 		if i > 0 {
@@ -235,7 +291,7 @@ func fallbackBlocks(articles []db.Article, startNumber int) string {
 		b.WriteString(fmt.Sprintf("%d. [%s](%s)\n", startNumber+i, a.Title, a.Link))
 		b.WriteString("  - " + s + "\n")
 		b.WriteString("    - 詳細は元記事を確認してください。\n")
-		b.WriteString("    - MCP の出力上限により自動補完しました。\n")
+		b.WriteString("    - " + reason + "\n")
 	}
 	return b.String()
 }

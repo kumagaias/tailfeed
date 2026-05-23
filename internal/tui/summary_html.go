@@ -28,11 +28,11 @@ func buildSummaryHTML(summaryText string, articles []db.Article) string {
 	var b strings.Builder
 
 	b.WriteString(`<!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tailfeed — Daily Summary</title>
+<title>tailfeed - 今日の要約</title>
 <style>
   :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --border: #30363d; --card: #161b22; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -41,9 +41,12 @@ func buildSummaryHTML(summaryText string, articles []db.Article) string {
   .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
   h2 { color: var(--accent); font-size: 1rem; margin: 2rem 0 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
   h3 { color: var(--fg); font-size: 0.95rem; margin: 1.5rem 0 0.5rem; }
+  h4 { color: var(--fg); font-size: 0.9rem; margin: 1.25rem 0 0.35rem; }
   p { margin: 0.5rem 0; color: var(--fg); }
-  ol, ul { margin: 0.5rem 0 0.5rem 1.5rem; }
-  li { margin: 0.2rem 0; }
+  ol, ul { margin: 0.35rem 0 0.9rem 1.5rem; }
+  li { margin: 0.15rem 0; }
+  ol > li { margin: 1.1rem 0 0.35rem; }
+  ol > li > a:first-child, ol > li > strong:first-child { font-weight: 700; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   pre { white-space: pre-wrap; word-break: break-word; }
@@ -52,8 +55,8 @@ func buildSummaryHTML(summaryText string, articles []db.Article) string {
 <body>
 `)
 
-	b.WriteString(fmt.Sprintf("<h1>📡 tailfeed — Daily Summary</h1>\n"))
-	b.WriteString(fmt.Sprintf(`<div class="meta">%s · %d articles</div>`+"\n",
+	b.WriteString(fmt.Sprintf("<h1>tailfeed - 今日の要約</h1>\n"))
+	b.WriteString(fmt.Sprintf(`<div class="meta">%s · %d 件</div>`+"\n",
 		time.Now().Format("2006-01-02 Mon"), len(articles)))
 
 	// Render summary markdown as simple HTML
@@ -93,9 +96,20 @@ func markdownToHTML(md string, articles []db.Article) string {
 	lines := strings.Split(md, "\n")
 	lists := make([]listFrame, 0, 4)
 	for _, line := range lines {
+		if isStandaloneArticleURLLine(line, articles) {
+			continue
+		}
 		if typ, indent, number, content, ok := parseListItem(line); ok {
+			content = stripGeneratedSummaryLabel(content)
+			if content == "" {
+				continue
+			}
 			closeListsTo(&b, &lists, typ, indent, number)
-			b.WriteString("<li>" + formatInline(content) + "\n")
+			if typ == "ol" {
+				b.WriteString("<li>" + formatArticleListContent(content, findArticleURL) + "\n")
+			} else {
+				b.WriteString("<li>" + formatInline(content) + "\n")
+			}
 			continue
 		}
 
@@ -103,24 +117,66 @@ func markdownToHTML(md string, articles []db.Article) string {
 		case strings.HasPrefix(line, "## "):
 			closeAllLists(&b, &lists)
 			text := line[3:]
-			if u := findArticleURL(text); u != "" {
-				b.WriteString(`<h2><a href="` + htmlEscape(u) + `" target="_blank">` + htmlEscape(text) + `</a></h2>` + "\n")
-			} else {
-				b.WriteString("<h2>" + formatInline(text) + "</h2>\n")
-			}
+			writeLinkedHeading(&b, "h2", text, findArticleURL(text))
 		case strings.HasPrefix(line, "### "):
 			closeAllLists(&b, &lists)
-			b.WriteString("<h3>" + formatInline(line[4:]) + "</h3>\n")
+			text := line[4:]
+			writeLinkedHeading(&b, "h3", text, findArticleURL(text))
+		case strings.HasPrefix(line, "#### "):
+			closeAllLists(&b, &lists)
+			text := line[5:]
+			writeLinkedHeading(&b, "h4", text, findArticleURL(text))
 		case strings.TrimSpace(line) == "":
 			closeAllLists(&b, &lists)
 			b.WriteString("\n")
 		default:
+			line = stripGeneratedSummaryLabel(line)
+			if line == "" {
+				continue
+			}
 			closeAllLists(&b, &lists)
 			b.WriteString("<p>" + formatInline(line) + "</p>\n")
 		}
 	}
 	closeAllLists(&b, &lists)
 	return b.String()
+}
+
+func writeLinkedHeading(b *strings.Builder, tag, text, url string) {
+	text = stripMarkdownStrong(strings.TrimSpace(text))
+	if url != "" {
+		b.WriteString("<" + tag + `><a href="` + htmlEscape(url) + `" target="_blank">` + htmlEscape(text) + `</a></` + tag + ">\n")
+		return
+	}
+	b.WriteString("<" + tag + ">" + formatInline(text) + "</" + tag + ">\n")
+}
+
+func formatArticleListContent(content string, findArticleURL func(string) string) string {
+	text := stripMarkdownStrong(strings.TrimSpace(content))
+	if url := findArticleURL(text); url != "" {
+		return `<a href="` + htmlEscape(url) + `" target="_blank">` + htmlEscape(text) + `</a>`
+	}
+	return formatInline(content)
+}
+
+func isStandaloneArticleURLLine(line string, articles []db.Article) bool {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "- ")
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "URL:")
+	line = strings.TrimPrefix(line, "Url:")
+	line = strings.TrimPrefix(line, "url:")
+	line = strings.TrimSpace(line)
+	line = strings.Trim(line, "<>()[]")
+	if line == "" {
+		return false
+	}
+	for _, a := range articles {
+		if a.Link != "" && line == a.Link {
+			return true
+		}
+	}
+	return false
 }
 
 type listFrame struct {
@@ -186,6 +242,8 @@ func closeAllLists(b *strings.Builder, lists *[]listFrame) {
 }
 
 func summaryHeadingKey(s string) string {
+	s = stripGeneratedSummaryLabel(s)
+	s = stripMarkdownStrong(s)
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = strings.Trim(s, "#*[]()「」『』\"'")
 	s = strings.TrimSpace(s)
@@ -210,6 +268,7 @@ func summaryHeadingKey(s string) string {
 }
 
 func formatInline(s string) string {
+	s = stripMarkdownStrong(s)
 	var b strings.Builder
 	for {
 		open := strings.Index(s, "[")
@@ -241,6 +300,39 @@ func formatInline(s string) string {
 		s = s[end+1:]
 	}
 	return b.String()
+}
+
+func stripGeneratedSummaryLabel(s string) string {
+	s = strings.TrimSpace(s)
+	s = stripMarkdownStrong(s)
+	labels := []string{
+		"TL;DR", "TLDR", "Summary", "Key Points", "Why It Matters",
+		"要約", "概要", "要点", "重要ポイント", "ポイント",
+	}
+	for _, label := range labels {
+		for _, sep := range []string{":", "："} {
+			prefix := label + sep
+			if strings.EqualFold(s, label) || strings.EqualFold(s, prefix) {
+				return ""
+			}
+			if strings.HasPrefix(strings.ToLower(s), strings.ToLower(prefix)) {
+				return strings.TrimSpace(s[len(prefix):])
+			}
+		}
+	}
+	return s
+}
+
+func stripMarkdownStrong(s string) string {
+	s = strings.TrimSpace(s)
+	for strings.Contains(s, "**") {
+		next := strings.Replace(s, "**", "", 2)
+		if next == s {
+			break
+		}
+		s = next
+	}
+	return strings.TrimSpace(s)
 }
 
 // autoLink converts plain URLs (already HTML-escaped, so https://... or http://...)

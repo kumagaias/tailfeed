@@ -22,6 +22,7 @@ brew install kumagaias/tap/tailfeed
 tailfeed                  # open TUI
 tailfeed -f               # stream new articles
 tailfeed summary today    # AI summary → HTML report
+tailfeed summary language Japanese
 tailfeed add <url>        # subscribe
 tailfeed add sample       # add popular feeds (--lang ja for Japanese)
 tailfeed remove <url>     # unsubscribe
@@ -53,6 +54,7 @@ group del [name]   delete group
 suggest            AI feed suggestions
 summary            summarise current article
 summary today      summarise today's articles + HTML report
+summary language   set/show summary language
 ```
 
 ## MCP (AI features)
@@ -64,7 +66,7 @@ tailfeed mcp set <command> [args...]
 tailfeed mcp set npx -y @anthropic/mcp-server-claude
 
 # Set summary language (default: Japanese)
-tailfeed mcp set <command> --language English
+tailfeed summary language English
 ```
 
 ## Data

@@ -33,7 +33,7 @@ func TestCompleteArticleBlocksKeepsOnlyCompleteBlocks(t *testing.T) {
 }
 
 func TestExtractExecutiveSummary(t *testing.T) {
-	text := `## Executive Summary
+	text := `## 今日の要点
 - 生成AI関連の更新が目立つ
 - 開発者向け機能の改善が続く
 
@@ -57,10 +57,10 @@ func TestExtractExecutiveSummary(t *testing.T) {
 }
 
 func TestExtractImportantArticles(t *testing.T) {
-	text := `## Executive Summary
+	text := `## 今日の要点
 - 全体傾向
 
-## Important Articles
+## 重要記事
 - [Important](https://example.com/i) - 影響が大きい
 - [Second](https://example.com/s) - 実装判断に関係
 
@@ -69,7 +69,7 @@ func TestExtractImportantArticles(t *testing.T) {
     - Point 1
     - Point 2`
 
-	got := extractMarkdownSection(text, "Important Articles")
+	got := extractImportantArticles(text)
 	for _, want := range []string{
 		"- [Important](https://example.com/i) - 影響が大きい",
 		"- [Second](https://example.com/s) - 実装判断に関係",
@@ -86,15 +86,49 @@ func TestExtractImportantArticles(t *testing.T) {
 func TestPromptRequiresJapaneseExecutiveSummaryFirst(t *testing.T) {
 	got := prompt("today", 2, "Japanese", "AI infra")
 	for _, want := range []string{
-		`Write all content in Japanese`,
-		`## Executive Summary`,
-		`## Important Articles`,
-		`Start with an executive summary section at the very top`,
+		`Write all generated summary content in Japanese`,
+		`Keep original article titles exactly as provided`,
+		`## 今日の要点`,
+		`## 重要記事`,
+		`Start with a 今日の要点 section at the very top`,
 		`User theme: AI infra`,
+		`Do not write a separate URL line under article titles`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in prompt, got:\n%s", want, got)
 		}
+	}
+}
+
+func TestPromptUsesEnglishHeadingsForEnglish(t *testing.T) {
+	got := prompt("today", 2, "English", "")
+	for _, want := range []string{
+		`Write all generated summary content in English`,
+		`## Executive Summary`,
+		`## Important Articles`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in prompt, got:\n%s", want, got)
+		}
+	}
+}
+
+func TestCompleteArticleBlocksDropsRawURLLine(t *testing.T) {
+	articles := []db.Article{
+		{Title: "First", Link: "https://example.com/1"},
+	}
+	text := `1. [wrong](https://wrong.example/1)
+URL: https://example.com/1
+  - Summary
+    - Point 1
+    - Point 2`
+
+	got, completed := completeArticleBlocks(text, articles, 1)
+	if completed != 1 {
+		t.Fatalf("completed = %d, want 1", completed)
+	}
+	if strings.Contains(got, "URL:") || strings.Contains(got, "\nhttps://example.com/1") {
+		t.Fatalf("expected raw URL line to be removed, got:\n%s", got)
 	}
 }
 

@@ -50,6 +50,8 @@ func (m *Model) execCommand(raw string) (string, tea.Cmd) {
 				return m.cmdSummaryPeriod(parts[1])
 			case "theme":
 				return m.cmdSummaryTheme(parts[2:]), nil
+			case "language", "lang":
+				return m.cmdSummaryLanguage(parts[2:]), nil
 			}
 		}
 		return m.cmdMCP("summary", parts[1:])
@@ -199,6 +201,7 @@ func (m *Model) cmdHelp() string {
 		"  summary yesterday     summarize all articles from yesterday (mcp required)",
 		"  summary week          summarize articles from the last 7 days (mcp required)",
 		"  summary theme [text]  set or show the saved summary theme",
+		"  summary language [x]  set or show the saved summary language",
 		"  usage                  show plan and remaining API quota",
 		"  mcp set <cmd> [args...]  register MCP server",
 		"  mcp list              list configured MCP server",
@@ -233,6 +236,21 @@ func (m *Model) cmdSummaryTheme(args []string) string {
 		return "summary theme cleared"
 	}
 	return "summary theme saved: " + cfg.Theme
+}
+
+func (m *Model) cmdSummaryLanguage(args []string) string {
+	cfg, err := summary.LoadConfig()
+	if err != nil {
+		return "summary config: " + err.Error()
+	}
+	if len(args) == 0 {
+		return "summary language: " + cfg.SummaryLanguage()
+	}
+	cfg.Language = strings.TrimSpace(strings.Join(args, " "))
+	if err := summary.SaveConfig(cfg); err != nil {
+		return "summary config: " + err.Error()
+	}
+	return "summary language saved: " + cfg.SummaryLanguage()
 }
 
 // cmdClear sets the pendingClear flag and shows a confirmation prompt.

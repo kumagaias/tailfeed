@@ -135,6 +135,50 @@ func TestBuildSummaryHTML_linksSummaryHeadingsWithoutArticleIndex(t *testing.T) 
 	}
 }
 
+func TestBuildSummaryHTML_linksFourthLevelArticleHeadings(t *testing.T) {
+	html := buildSummaryHTML("#### 1. Example A\nTL;DR", []db.Article{
+		{Title: "Example A", Link: "https://example.com/a"},
+	})
+
+	if !strings.Contains(html, `<h4><a href="https://example.com/a" target="_blank">1. Example A</a></h4>`) {
+		t.Fatalf("expected h4 summary heading to link to article, got:\n%s", html)
+	}
+}
+
+func TestBuildSummaryHTML_dropsRawArticleURLLine(t *testing.T) {
+	html := buildSummaryHTML("## 1. Example A\nURL: https://example.com/a\nTL;DR", []db.Article{
+		{Title: "Example A", Link: "https://example.com/a"},
+	})
+
+	if strings.Contains(html, "URL:") {
+		t.Fatalf("expected raw URL label to be removed, got:\n%s", html)
+	}
+	if got := strings.Count(html, `https://example.com/a`); got != 1 {
+		t.Fatalf("expected URL only in title link, got %d occurrences:\n%s", got, html)
+	}
+}
+
+func TestBuildSummaryHTML_stripsSummaryLabelsAndLinksBoldListTitle(t *testing.T) {
+	html := buildSummaryHTML("1. **Example A**\n- **TL;DR:** Concise summary\n- Key Points:\n  - Point 1", []db.Article{
+		{Title: "Example A", Link: "https://example.com/a"},
+	})
+
+	for _, bad := range []string{"TL;DR", "Key Points", "**"} {
+		if strings.Contains(html, bad) {
+			t.Fatalf("expected %q to be stripped, got:\n%s", bad, html)
+		}
+	}
+	for _, want := range []string{
+		`<li><a href="https://example.com/a" target="_blank">Example A</a>`,
+		"<li>Concise summary",
+		"<li>Point 1",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected %q in html, got:\n%s", want, html)
+		}
+	}
+}
+
 func TestBuildSummaryHTML_rendersOrderedMarkdownLinks(t *testing.T) {
 	html := buildSummaryHTML("1. [Example A](https://example.com/a)\n  - Concise summary\n    - Point 1\n    - Point 2", nil)
 

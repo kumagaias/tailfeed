@@ -62,7 +62,11 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 	}
 	if mcpCfg != nil {
 		return fmt.Sprintf("summarising %d articles (%s)…", len(articles), label), func() tea.Msg {
-			text, err := summary.SummarizeWithMCP(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme)
+			language := summaryCfg.SummaryLanguage()
+			if summaryCfg.Language == "" {
+				language = mcpCfg.SummaryLanguage()
+			}
+			text, err := summary.SummarizeWithMCPInLanguage(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language)
 			if err != nil {
 				return mcpResultMsg{text: "summary " + period + " error: " + err.Error()}
 			}
@@ -74,16 +78,13 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 		}
 	}
 
-	apiArticles := make([]api.SummaryArticle, len(articles))
-	for i, a := range articles {
-		apiArticles[i] = api.SummaryArticle{Title: a.Title, URL: a.Link, Summary: a.Summary}
-	}
 	return fmt.Sprintf("summarising %d articles (%s)…", len(articles), label), func() tea.Msg {
 		apiCfg, err := api.LoadOrRegister()
 		if err != nil {
 			return mcpResultMsg{text: "api: " + err.Error()}
 		}
-		text, err := api.Summary(apiCfg.UserKey, apiArticles, "Japanese", summaryCfg.Theme)
+		language := summaryCfg.SummaryLanguage()
+		text, err := summary.SummarizeWithAPI(apiCfg.UserKey, label, articles, language, summaryCfg.Theme)
 		if err != nil {
 			return mcpResultMsg{text: "summary " + period + " error: " + err.Error()}
 		}
@@ -134,7 +135,11 @@ func (m *Model) cmdMCP(cmdName string, _ []string) (string, tea.Cmd) {
 		if theme != "" {
 			themeLine = " Prioritize this user theme where relevant: " + theme + "."
 		}
-		question := fmt.Sprintf(`Summarize this article in %s for a senior engineer.%s Format: TL;DR (1 sentence), Key Points (bullet list of technical takeaways), Why It Matters (1-2 sentences on practical impact). No filler.`, mcpCfg.SummaryLanguage(), themeLine)
+		language := summaryCfg.SummaryLanguage()
+		if summaryCfg.Language == "" {
+			language = mcpCfg.SummaryLanguage()
+		}
+		question := fmt.Sprintf(`Summarize this article in %s for a senior engineer.%s Keep the original article title unchanged. Use a compact plain bullet list in %s. Do not write labels like TL;DR, Summary, Key Points, or Why It Matters. No filler.`, language, themeLine, language)
 		args := map[string]any{
 			"question": question,
 			"context":  fmt.Sprintf("Title: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
@@ -177,9 +182,10 @@ func (m *Model) cmdMCP(cmdName string, _ []string) (string, tea.Cmd) {
 		if err != nil {
 			return mcpResultMsg{text: "api: " + err.Error()}
 		}
+		language := summaryCfg.SummaryLanguage()
 		text, err := api.Summary(apiCfg.UserKey, []api.SummaryArticle{
 			{Title: article.Title, URL: article.Link, Summary: article.Summary},
-		}, "Japanese", summaryCfg.Theme)
+		}, language, summary.ThemeWithLanguageInstruction(summaryCfg.Theme, language))
 		if err != nil {
 			return mcpResultMsg{text: cmdName + " error: " + err.Error()}
 		}

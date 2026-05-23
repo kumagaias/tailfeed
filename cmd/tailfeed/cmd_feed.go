@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -18,20 +17,6 @@ import (
 	"github.com/kumagaias/tailfeed/internal/summary"
 	"github.com/kumagaias/tailfeed/internal/tui"
 )
-
-var reHTML = regexp.MustCompile(`<[^>]+>`)
-var reWS = regexp.MustCompile(`\s+`)
-
-// plainSummary strips HTML tags, collapses whitespace, and truncates to max runes.
-func plainSummary(s string, max int) string {
-	s = reHTML.ReplaceAllString(s, " ")
-	s = reWS.ReplaceAllString(strings.TrimSpace(s), " ")
-	runes := []rune(s)
-	if len(runes) > max {
-		return string(runes[:max])
-	}
-	return s
-}
 
 func openBrowserCLI(url string) {
 	var cmd string
@@ -281,7 +266,11 @@ func summaryCmd() *cobra.Command {
 				return err
 			}
 			if mcpCfg != nil {
-				text, err = summary.SummarizeWithMCP(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme)
+				language := summaryCfg.SummaryLanguage()
+				if summaryCfg.Language == "" {
+					language = mcpCfg.SummaryLanguage()
+				}
+				text, err = summary.SummarizeWithMCPInLanguage(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language)
 				if err != nil {
 					return err
 				}
@@ -290,11 +279,8 @@ func summaryCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				apiArticles := make([]api.SummaryArticle, len(articles))
-				for i, a := range articles {
-					apiArticles[i] = api.SummaryArticle{Title: a.Title, URL: a.Link, Summary: plainSummary(a.Summary, 300)}
-				}
-				text, err = api.Summary(apiCfg.UserKey, apiArticles, "Japanese", summaryCfg.Theme)
+				language := summaryCfg.SummaryLanguage()
+				text, err = summary.SummarizeWithAPI(apiCfg.UserKey, label, articles, language, summaryCfg.Theme)
 				if err != nil {
 					return err
 				}
@@ -347,7 +333,29 @@ func summaryCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(themeCmd)
+
+	languageCmd := &cobra.Command{
+		Use:   "language [language]",
+		Short: "Set or show the saved summary language",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, args []string) error {
+			cfg, err := summary.LoadConfig()
+			if err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				fmt.Printf("summary language: %s\n", cfg.SummaryLanguage())
+				return nil
+			}
+			cfg.Language = strings.TrimSpace(strings.Join(args, " "))
+			if err := summary.SaveConfig(cfg); err != nil {
+				return err
+			}
+			fmt.Printf("summary language saved: %s\n", cfg.SummaryLanguage())
+			return nil
+		},
+	}
+	cmd.AddCommand(themeCmd, languageCmd)
 	return cmd
 }
 
