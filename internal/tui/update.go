@@ -51,7 +51,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.viewport = viewport.New(m.listWidth(), m.contentHeight())
 		m.detailVP = viewport.New(m.detailPaneWidth(), m.contentHeight())
-		m.cursor = max(0, len(m.articles)-1)
+		if m.cursor >= len(m.articles) {
+			m.cursor = max(0, len(m.articles)-1)
+		}
 		m.centerViewportOnCursor()
 		m.updateDetailContent()
 		return m, nil

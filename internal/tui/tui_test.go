@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/kumagaias/tailfeed/internal/db"
 )
@@ -279,6 +280,20 @@ func TestSyncViewportToCursorRevealsCursorAtTopEdge(t *testing.T) {
 	if got, maxAllowed := m.viewport.YOffset, m.cursor*linesPerSlot; got > maxAllowed {
 		t.Fatalf("expected viewport offset at or above card top %d, got %d", maxAllowed, got)
 	}
+}
+
+func TestWindowResizePreservesCursor(t *testing.T) {
+	m := cursorTestModel(20, 80, 16)
+	m.cursor = 5
+	m.centerViewportOnCursor()
+
+	gotModel, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	got := gotModel.(*Model)
+
+	if got.cursor != 5 {
+		t.Fatalf("expected resize to preserve cursor 5, got %d", got.cursor)
+	}
+	assertCursorCardFullyVisible(t, got)
 }
 
 func cursorTestModel(articleCount, width, height int) *Model {
