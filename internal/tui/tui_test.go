@@ -7,6 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	runewidth "github.com/mattn/go-runewidth"
 
 	"github.com/kumagaias/tailfeed/internal/db"
 )
@@ -84,10 +86,16 @@ func TestTruncate(t *testing.T) {
 	if !strings.HasSuffix(got, "…") {
 		t.Errorf("expected ellipsis, got %q", got)
 	}
+	if w := runewidth.StringWidth(got); w > 7 {
+		t.Errorf("expected width <= 7, got %d for %q", w, got)
+	}
 	// Multibyte: each Japanese character is width 2.
 	got = truncate("あいうえお", 4)
 	if !strings.HasSuffix(got, "…") {
 		t.Errorf("expected truncation of wide chars, got %q", got)
+	}
+	if w := runewidth.StringWidth(got); w > 4 {
+		t.Errorf("expected width <= 4, got %d for %q", w, got)
 	}
 }
 
@@ -279,6 +287,25 @@ func TestSyncViewportToCursorRevealsCursorAtTopEdge(t *testing.T) {
 	assertCursorCardFullyVisible(t, m)
 	if got, maxAllowed := m.viewport.YOffset, m.cursor*linesPerSlot; got > maxAllowed {
 		t.Fatalf("expected viewport offset at or above card top %d, got %d", maxAllowed, got)
+	}
+}
+
+func TestRenderCardDoesNotExceedListWidth(t *testing.T) {
+	m := cursorTestModel(1, 40, 16)
+	m.cursor = 0
+	m.articles[0].Title = strings.Repeat("long title ", 12)
+	m.articles[0].FeedTitle = strings.Repeat("長いフィード", 8)
+	m.articles[0].Summary = strings.Repeat("これはとても長い要約です ", 16)
+
+	card := m.renderCard(0, m.articles[0], m.listWidth()-4)
+	lines := strings.Split(card, "\n")
+	if len(lines) != linesPerCard {
+		t.Fatalf("expected %d card lines, got %d:\n%s", linesPerCard, len(lines), card)
+	}
+	for _, line := range lines {
+		if w := lipgloss.Width(line); w > m.listWidth() {
+			t.Fatalf("expected rendered line width <= %d, got %d for %q", m.listWidth(), w, line)
+		}
 	}
 }
 

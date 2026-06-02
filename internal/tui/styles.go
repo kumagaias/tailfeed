@@ -91,10 +91,25 @@ func humanTime(t *time.Time) string {
 }
 
 func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
 	width := 0
 	for i, r := range s {
 		w := runewidth.RuneWidth(r)
 		if width+w > max {
+			if max == 1 {
+				return "…"
+			}
+			limit := max - 1
+			prefixWidth := 0
+			for j, pr := range s[:i] {
+				pw := runewidth.RuneWidth(pr)
+				if prefixWidth+pw > limit {
+					return s[:j] + "…"
+				}
+				prefixWidth += pw
+			}
 			return s[:i] + "…"
 		}
 		width += w
