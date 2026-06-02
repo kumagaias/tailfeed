@@ -3,7 +3,9 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -24,14 +26,27 @@ type Article struct {
 
 // SaveArticle inserts an article, silently ignoring duplicates.
 func (d *DB) SaveArticle(a *Article) (saved bool, err error) {
-	if a.Link != "" {
-		var existingID int64
-		err := d.QueryRow(`SELECT id FROM articles WHERE link = ? LIMIT 1`, a.Link).Scan(&existingID)
-		if err == nil {
-			return false, nil
+	if key := articleDedupeKey(*a); key != "" {
+		rows, err := d.Query(`SELECT feed_id, guid, COALESCE(link,''), title, published_at, created_at FROM articles`)
+		if err != nil {
+			return false, fmt.Errorf("check duplicate article: %w", err)
 		}
-		if err != sql.ErrNoRows {
-			return false, fmt.Errorf("check duplicate article link: %w", err)
+		defer rows.Close()
+		for rows.Next() {
+			var existing Article
+			var pub sql.NullTime
+			if err := rows.Scan(&existing.FeedID, &existing.GUID, &existing.Link, &existing.Title, &pub, &existing.CreatedAt); err != nil {
+				return false, fmt.Errorf("check duplicate article: %w", err)
+			}
+			if pub.Valid {
+				existing.PublishedAt = &pub.Time
+			}
+			if articleDedupeKey(existing) == key {
+				return false, nil
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return false, fmt.Errorf("check duplicate article: %w", err)
 		}
 	}
 
@@ -83,7 +98,11 @@ func (d *DB) ListArticles(groupID *int64, limit, offset int) ([]Article, error) 
 		return nil, err
 	}
 	defer rows.Close()
-	return scanArticles(rows)
+	articles, err := scanArticles(rows)
+	if err != nil {
+		return nil, err
+	}
+	return dedupeArticles(articles), nil
 }
 
 // ListRecentArticles returns the N most recent articles in newest-first order.
@@ -102,7 +121,11 @@ func (d *DB) ListRecentArticles(groupID *int64, limit int) ([]Article, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanArticles(rows)
+	articles, err := scanArticles(rows)
+	if err != nil {
+		return nil, err
+	}
+	return dedupeArticles(articles), nil
 }
 
 // ListTodayArticles returns all articles published or created today (local time).
@@ -153,7 +176,7 @@ func (d *DB) listArticlesByDateRangeAt(now time.Time, daysOffset, duration int) 
 	sort.SliceStable(filtered, func(i, j int) bool {
 		return articleTime(filtered[i]).After(articleTime(filtered[j]))
 	})
-	return filtered, nil
+	return dedupeArticles(filtered), nil
 }
 
 func articleTime(a Article) time.Time {
@@ -163,6 +186,62 @@ func articleTime(a Article) time.Time {
 	return a.CreatedAt
 }
 
+func dedupeArticles(articles []Article) []Article {
+	seen := make(map[string]bool, len(articles))
+	out := articles[:0]
+	for _, a := range articles {
+		key := articleDedupeKey(a)
+		if key != "" {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+func articleDedupeKey(a Article) string {
+	if link := normalizedArticleLink(a.Link); link != "" {
+		return "link:" + link
+	}
+	if guid := normalizedArticleLink(a.GUID); guid != "" {
+		return "link:" + guid
+	}
+	if guid := strings.TrimSpace(a.GUID); guid != "" {
+		return "guid:" + guid
+	}
+	return ""
+}
+
+func normalizedArticleLink(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	u.Fragment = ""
+
+	q := u.Query()
+	for key := range q {
+		lower := strings.ToLower(key)
+		if strings.HasPrefix(lower, "utm_") || lower == "fbclid" || lower == "gclid" || lower == "yclid" || lower == "mc_cid" || lower == "mc_eid" {
+			q.Del(key)
+		}
+	}
+	u.RawQuery = q.Encode()
+	if u.Path != "/" {
+		u.Path = strings.TrimRight(u.Path, "/")
+	}
+	return u.String()
+}
+
 // ListStockedArticles returns articles marked as stocked (favourites).
 func (d *DB) ListStockedArticles(limit, offset int) ([]Article, error) {
 	rows, err := d.Query(fmt.Sprintf(articleSelectQ, "WHERE a.is_stocked = 1"), limit, offset)
@@ -170,7 +249,11 @@ func (d *DB) ListStockedArticles(limit, offset int) ([]Article, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanArticles(rows)
+	articles, err := scanArticles(rows)
+	if err != nil {
+		return nil, err
+	}
+	return dedupeArticles(articles), nil
 }
 
 // MarkRead marks an article as read.

@@ -95,3 +95,74 @@ func TestListTodayArticlesUsesLocalDayBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestSaveArticleDedupesNormalizedLinks(t *testing.T) {
+	d := openArticleTestDB(t)
+	f1, err := d.AddFeed("https://example.com/rss", nil)
+	if err != nil {
+		t.Fatalf("AddFeed f1: %v", err)
+	}
+	f2, err := d.AddFeed("https://mirror.example.com/rss", nil)
+	if err != nil {
+		t.Fatalf("AddFeed f2: %v", err)
+	}
+
+	saved, err := d.SaveArticle(&Article{
+		FeedID: f1.ID,
+		GUID:   "first",
+		Title:  "Article",
+		Link:   "https://example.com/post?utm_source=rss#comments",
+	})
+	if err != nil {
+		t.Fatalf("SaveArticle first: %v", err)
+	}
+	if !saved {
+		t.Fatal("expected first article to be saved")
+	}
+
+	saved, err = d.SaveArticle(&Article{
+		FeedID: f2.ID,
+		GUID:   "second",
+		Title:  "Article duplicate",
+		Link:   "https://EXAMPLE.com/post/",
+	})
+	if err != nil {
+		t.Fatalf("SaveArticle duplicate: %v", err)
+	}
+	if saved {
+		t.Fatal("expected normalized duplicate link to be ignored")
+	}
+}
+
+func TestListTodayArticlesDedupesExistingNormalizedLinks(t *testing.T) {
+	d := openArticleTestDB(t)
+	f, err := d.AddFeed("https://example.com/rss", nil)
+	if err != nil {
+		t.Fatalf("AddFeed: %v", err)
+	}
+	now := time.Date(2026, 5, 21, 9, 0, 0, 0, time.Local)
+	published := now.Add(-time.Hour)
+
+	_, err = d.Exec(
+		`INSERT INTO articles (feed_id, guid, title, link, published_at) VALUES (?, ?, ?, ?, ?)`,
+		f.ID, "first", "Article", "https://example.com/post?utm_medium=feed", published,
+	)
+	if err != nil {
+		t.Fatalf("insert first: %v", err)
+	}
+	_, err = d.Exec(
+		`INSERT INTO articles (feed_id, guid, title, link, published_at) VALUES (?, ?, ?, ?, ?)`,
+		f.ID, "second", "Article duplicate", "https://example.com/post#read", published,
+	)
+	if err != nil {
+		t.Fatalf("insert duplicate: %v", err)
+	}
+
+	articles, err := d.listArticlesByDateRangeAt(now, 0, 1)
+	if err != nil {
+		t.Fatalf("listArticlesByDateRangeAt: %v", err)
+	}
+	if len(articles) != 1 {
+		t.Fatalf("expected 1 deduped article, got %d: %#v", len(articles), articles)
+	}
+}

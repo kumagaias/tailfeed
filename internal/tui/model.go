@@ -30,10 +30,11 @@ const articlesPageSize = 50
 
 // linesPerCard is the fixed visual height of every card:
 //
-//	border(1) + title(1) + meta(1) + summary(1) + border(1) = 5
+//	border(1) + title(1) + meta(1) + summary(3) + border(1) = 7
 //
 // linesPerSlot includes the blank separator line between cards.
-const linesPerCard = 5
+const summaryLinesPerCard = 3
+const linesPerCard = 7
 const linesPerSlot = linesPerCard + 1
 
 // inputBoxHeight is the height of the command input box including its border.

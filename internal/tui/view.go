@@ -139,14 +139,25 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	meta := styleMeta.Inline(true).MaxWidth(width - 2).Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))
 
 	summaryFull := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
-	summaryLine := " "
+	summaryLines := make([]string, summaryLinesPerCard)
 	if summaryFull != "" {
-		summaryLine = truncate(summaryFull, inner)
+		wrapped := strings.Split(wordWrap(summaryFull, inner), "\n")
+		for i := 0; i < len(wrapped) && i < summaryLinesPerCard; i++ {
+			summaryLines[i] = truncate(wrapped[i], inner)
+		}
+		if len(wrapped) > summaryLinesPerCard {
+			summaryLines[summaryLinesPerCard-1] = truncate(summaryLines[summaryLinesPerCard-1], inner-1) + "…"
+		}
+	}
+	for i, line := range summaryLines {
+		if line == "" {
+			summaryLines[i] = " "
+		}
 	}
 
 	content := indicator + title + "\n" +
 		"  " + meta + "\n" +
-		"  " + styleSummary.Inline(true).MaxWidth(inner).Render(summaryLine)
+		"  " + styleSummary.Inline(true).MaxWidth(inner).Render(strings.Join(summaryLines, "\n  "))
 
 	var s lipgloss.Style
 	switch {
