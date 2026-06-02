@@ -28,14 +28,8 @@ const articlesLimit = 1000
 // articlesPageSize is how many older articles to load per "load more" request.
 const articlesPageSize = 50
 
-// linesPerCard is the fixed visual height of every card:
-//
-//	border(1) + title(1) + meta(1) + summary(3) + border(1) = 7
-//
-// linesPerSlot includes the blank separator line between cards.
+// summaryLinesPerCard is the maximum number of summary lines shown in a card.
 const summaryLinesPerCard = 3
-const linesPerCard = 7
-const linesPerSlot = linesPerCard + 1
 
 // inputBoxHeight is the height of the command input box including its border.
 const inputBoxHeight = 3 // border-top + content + border-bottom

@@ -160,10 +160,9 @@ func (m *Model) handleMouseMsg(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		const articleAreaTop = 3
 		if msg.Y >= articleAreaTop {
 			contentY := msg.Y - articleAreaTop + m.viewport.YOffset
-			idx := contentY / linesPerSlot
-			lineInSlot := contentY % linesPerSlot
+			idx, lineInCard := m.articleAtLine(contentY)
 			if idx >= 0 && idx < len(m.articles) {
-				if lineInSlot == 1 && msg.X == 3 {
+				if lineInCard == 1 && msg.X == 3 {
 					_ = m.db.ToggleStock(m.articles[idx].ID)
 					_ = m.reloadArticles()
 					m.viewport.SetContent(m.renderArticles())
@@ -401,48 +400,15 @@ func (m *Model) reloadGroupPreservePos(prevTab int) {
 }
 
 func (m *Model) syncViewportToCursor() {
-	m.viewport.Width = m.listWidth()
-	m.viewport.Height = m.contentHeight()
-	content := m.renderArticles()
-	m.viewport.SetContent(content)
-
-	if len(m.articles) == 0 {
-		m.viewport.SetYOffset(0)
-		return
-	}
-
-	cardTop := m.cursor * linesPerSlot
-	cardBottom := cardTop + linesPerCard
-	top := m.viewport.YOffset
-	bottom := top + m.viewport.Height
-
-	offset := top
-	if cardTop-scrolloff < top {
-		offset = cardTop - scrolloff
-	} else if cardBottom+scrolloff > bottom {
-		offset = cardBottom + scrolloff - m.viewport.Height
-	}
-
-	maxOffset := maxContentOffset(content, m.viewport.Height)
-	if offset < 0 {
-		offset = 0
-	}
-	if offset > maxOffset {
-		offset = maxOffset
-	}
-	m.viewport.SetYOffset(offset)
+	m.centerViewportOnCursor()
 }
-
-// scrolloff is the minimum number of lines kept around the selected card when
-// there is enough content. This prevents the cursor line from being clipped at
-// the viewport edge while moving one item at a time.
-const scrolloff = 2
 
 func (m *Model) centerViewportOnCursor() {
 	m.viewport.Width = m.listWidth()
 	m.viewport.Height = m.contentHeight()
 	content := m.renderArticles()
-	cardCenter := m.cursor*linesPerSlot + linesPerCard/2
+	cardTop, cardBottom := m.cursorLineRange()
+	cardCenter := cardTop + (cardBottom-cardTop)/2
 	offset := cardCenter - m.viewport.Height/2
 	if offset < 0 {
 		offset = 0
@@ -453,6 +419,48 @@ func (m *Model) centerViewportOnCursor() {
 	}
 	m.viewport.SetContent(content)
 	m.viewport.SetYOffset(offset)
+}
+
+func (m *Model) cursorLineRange() (int, int) {
+	return m.articleLineRange(m.cursor)
+}
+
+func (m *Model) articleLineRange(idx int) (int, int) {
+	if idx < 0 || idx >= len(m.articles) {
+		return 0, 0
+	}
+	innerWidth := m.listWidth() - 4
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+	top := 0
+	for i, a := range m.articles {
+		cardLines := strings.Count(m.renderCard(i, a, innerWidth), "\n") + 1
+		if i == idx {
+			return top, top + cardLines
+		}
+		top += cardLines
+	}
+	return 0, 0
+}
+
+func (m *Model) articleAtLine(line int) (int, int) {
+	if line < 0 {
+		return -1, 0
+	}
+	innerWidth := m.listWidth() - 4
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+	top := 0
+	for i, a := range m.articles {
+		cardLines := strings.Count(m.renderCard(i, a, innerWidth), "\n") + 1
+		if line >= top && line < top+cardLines {
+			return i, line - top
+		}
+		top += cardLines
+	}
+	return -1, 0
 }
 
 func maxContentOffset(content string, viewportHeight int) int {

@@ -108,7 +108,7 @@ func (m *Model) renderArticles() string {
 	for i, a := range m.articles {
 		b.WriteString(m.renderCard(i, a, innerWidth))
 		if i < len(m.articles)-1 {
-			b.WriteString("\n\n")
+			b.WriteString("\n")
 		}
 	}
 	return b.String()
@@ -139,28 +139,21 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	meta := styleMeta.Inline(true).MaxWidth(width - 2).Render(truncate(a.FeedTitle+"  ·  "+humanTime(a.PublishedAt), width-2))
 
 	summaryFull := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
-	summaryLines := make([]string, summaryLinesPerCard)
+	var summaryLines []string
 	if summaryFull != "" {
 		wrapped := strings.Split(wordWrap(summaryFull, inner), "\n")
 		for i := 0; i < len(wrapped) && i < summaryLinesPerCard; i++ {
-			summaryLines[i] = truncate(wrapped[i], inner)
+			summaryLines = append(summaryLines, truncate(wrapped[i], inner))
 		}
 		if len(wrapped) > summaryLinesPerCard {
 			summaryLines[summaryLinesPerCard-1] = truncate(summaryLines[summaryLinesPerCard-1], inner-1) + "…"
 		}
 	}
-	for i, line := range summaryLines {
-		if line == "" {
-			summaryLines[i] = " "
-		}
+	contentLines := []string{indicator + title, "  " + meta}
+	for _, line := range summaryLines {
+		contentLines = append(contentLines, "  "+styleSummary.Inline(true).MaxWidth(inner).Render(line))
 	}
-	for i, line := range summaryLines {
-		summaryLines[i] = styleSummary.Inline(true).MaxWidth(inner).Render(line)
-	}
-
-	content := indicator + title + "\n" +
-		"  " + meta + "\n" +
-		"  " + strings.Join(summaryLines, "\n  ")
+	content := strings.Join(contentLines, "\n")
 
 	var s lipgloss.Style
 	switch {
@@ -172,11 +165,7 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 		s = styleCardNormal.Width(width + 2)
 	}
 	rendered := s.Render(content)
-	lines := strings.Split(rendered, "\n")
-	if len(lines) > linesPerCard {
-		lines = lines[:linesPerCard]
-	}
-	return strings.Join(lines, "\n")
+	return rendered
 }
 
 func (m *Model) renderFeedList() string {

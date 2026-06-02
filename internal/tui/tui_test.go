@@ -262,7 +262,7 @@ func TestVisLen(t *testing.T) {
 
 // ── cursor viewport sync ─────────────────────────────────────────────────────
 
-func TestSyncViewportToCursorKeepsVisibleCardStationary(t *testing.T) {
+func TestSyncViewportToCursorCentersVisibleCard(t *testing.T) {
 	m := cursorTestModel(20, 80, 16)
 	m.cursor = 10
 	m.viewport.SetContent(m.renderArticles())
@@ -270,24 +270,25 @@ func TestSyncViewportToCursorKeepsVisibleCardStationary(t *testing.T) {
 
 	m.syncViewportToCursor()
 
-	if got, want := m.viewport.YOffset, 77; got != want {
-		t.Fatalf("expected visible cursor to keep viewport offset %d, got %d", want, got)
+	if got, want := m.viewport.YOffset, centeredCursorOffset(m); got != want {
+		t.Fatalf("expected visible cursor to center viewport offset %d, got %d", want, got)
 	}
 	assertCursorCardFullyVisible(t, m)
 }
 
-func TestSyncViewportToCursorRevealsCursorAtTopEdge(t *testing.T) {
+func TestSyncViewportToCursorCentersCursorAtTopEdge(t *testing.T) {
 	m := cursorTestModel(20, 80, 16)
 	m.cursor = 5
 	m.viewport.SetContent(m.renderArticles())
-	m.viewport.SetYOffset(m.cursor*linesPerSlot + 1)
+	cardTop, _ := m.cursorLineRange()
+	m.viewport.SetYOffset(cardTop + 1)
 
 	m.syncViewportToCursor()
 
-	assertCursorCardFullyVisible(t, m)
-	if got, maxAllowed := m.viewport.YOffset, m.cursor*linesPerSlot; got > maxAllowed {
-		t.Fatalf("expected viewport offset at or above card top %d, got %d", maxAllowed, got)
+	if got, want := m.viewport.YOffset, centeredCursorOffset(m); got != want {
+		t.Fatalf("expected cursor to center viewport offset %d, got %d", want, got)
 	}
+	assertCursorCardFullyVisible(t, m)
 }
 
 func TestRenderCardDoesNotExceedListWidth(t *testing.T) {
@@ -299,13 +300,24 @@ func TestRenderCardDoesNotExceedListWidth(t *testing.T) {
 
 	card := m.renderCard(0, m.articles[0], m.listWidth()-4)
 	lines := strings.Split(card, "\n")
-	if len(lines) != linesPerCard {
-		t.Fatalf("expected %d card lines, got %d:\n%s", linesPerCard, len(lines), card)
+	if len(lines) > summaryLinesPerCard+4 {
+		t.Fatalf("expected at most %d card lines, got %d:\n%s", summaryLinesPerCard+4, len(lines), card)
 	}
 	for _, line := range lines {
 		if w := lipgloss.Width(line); w > m.listWidth() {
 			t.Fatalf("expected rendered line width <= %d, got %d for %q", m.listWidth(), w, line)
 		}
+	}
+}
+
+func TestRenderCardOmitsEmptySummarySpace(t *testing.T) {
+	m := cursorTestModel(1, 40, 16)
+	m.articles[0].Summary = ""
+
+	card := m.renderCard(0, m.articles[0], m.listWidth()-4)
+	lines := strings.Split(card, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected compact card with 4 lines, got %d:\n%s", len(lines), card)
 	}
 }
 
@@ -343,8 +355,7 @@ func cursorTestModel(articleCount, width, height int) *Model {
 
 func assertCursorCardFullyVisible(t *testing.T, m *Model) {
 	t.Helper()
-	cardTop := m.cursor * linesPerSlot
-	cardBottom := cardTop + linesPerCard
+	cardTop, cardBottom := m.cursorLineRange()
 	viewportTop := m.viewport.YOffset
 	viewportBottom := viewportTop + m.viewport.Height
 
@@ -357,4 +368,18 @@ func assertCursorCardFullyVisible(t *testing.T, m *Model) {
 			viewportBottom,
 		)
 	}
+}
+
+func centeredCursorOffset(m *Model) int {
+	content := m.renderArticles()
+	cardTop, cardBottom := m.cursorLineRange()
+	cardCenter := cardTop + (cardBottom-cardTop)/2
+	offset := cardCenter - m.viewport.Height/2
+	if offset < 0 {
+		offset = 0
+	}
+	if maxOffset := maxContentOffset(content, m.viewport.Height); offset > maxOffset {
+		offset = maxOffset
+	}
+	return offset
 }
