@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
+
 	"github.com/kumagaias/tailfeed/internal/db"
 )
 
@@ -246,5 +248,71 @@ func TestVisLen(t *testing.T) {
 	styled := "\x1b[1mhello\x1b[0m"
 	if got := visLen(styled); got != 5 {
 		t.Errorf("expected 5, got %d", got)
+	}
+}
+
+// ── cursor viewport sync ─────────────────────────────────────────────────────
+
+func TestSyncViewportToCursorKeepsVisibleCardStationary(t *testing.T) {
+	m := cursorTestModel(20, 80, 16)
+	m.cursor = 10
+	m.viewport.SetContent(m.renderArticles())
+	m.viewport.SetYOffset(77)
+
+	m.syncViewportToCursor()
+
+	if got, want := m.viewport.YOffset, 77; got != want {
+		t.Fatalf("expected visible cursor to keep viewport offset %d, got %d", want, got)
+	}
+	assertCursorCardFullyVisible(t, m)
+}
+
+func TestSyncViewportToCursorRevealsCursorAtTopEdge(t *testing.T) {
+	m := cursorTestModel(20, 80, 16)
+	m.cursor = 5
+	m.viewport.SetContent(m.renderArticles())
+	m.viewport.SetYOffset(m.cursor*linesPerSlot + 1)
+
+	m.syncViewportToCursor()
+
+	assertCursorCardFullyVisible(t, m)
+	if got, maxAllowed := m.viewport.YOffset, m.cursor*linesPerSlot; got > maxAllowed {
+		t.Fatalf("expected viewport offset at or above card top %d, got %d", maxAllowed, got)
+	}
+}
+
+func cursorTestModel(articleCount, width, height int) *Model {
+	articles := make([]db.Article, articleCount)
+	for i := range articles {
+		articles[i] = db.Article{
+			Title:     "Article title",
+			FeedTitle: "Feed",
+			Summary:   "This is a summary with enough words to wrap over multiple lines in the card.",
+		}
+	}
+	m := &Model{
+		width:    width,
+		height:   height,
+		articles: articles,
+		viewport: viewport.New(width, height-4),
+	}
+	return m
+}
+
+func assertCursorCardFullyVisible(t *testing.T, m *Model) {
+	t.Helper()
+	cardTop := m.cursor * linesPerSlot
+	cardBottom := cardTop + linesPerCard
+	viewportTop := m.viewport.YOffset
+	viewportBottom := viewportTop + m.viewport.Height
+
+	if cardTop < viewportTop || cardBottom > viewportBottom {
+		t.Fatalf(
+			"cursor card not fully visible: card=[%d,%d) viewport=[%d,%d)",
+			cardTop,
+			cardBottom,
+			viewportTop,
+			viewportBottom,
+		)
 	}
 }

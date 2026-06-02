@@ -399,8 +399,42 @@ func (m *Model) reloadGroupPreservePos(prevTab int) {
 }
 
 func (m *Model) syncViewportToCursor() {
-	m.centerViewportOnCursor()
+	m.viewport.Width = m.listWidth()
+	m.viewport.Height = m.contentHeight()
+	content := m.renderArticles()
+	m.viewport.SetContent(content)
+
+	if len(m.articles) == 0 {
+		m.viewport.SetYOffset(0)
+		return
+	}
+
+	cardTop := m.cursor * linesPerSlot
+	cardBottom := cardTop + linesPerCard
+	top := m.viewport.YOffset
+	bottom := top + m.viewport.Height
+
+	offset := top
+	if cardTop-scrolloff < top {
+		offset = cardTop - scrolloff
+	} else if cardBottom+scrolloff > bottom {
+		offset = cardBottom + scrolloff - m.viewport.Height
+	}
+
+	maxOffset := maxContentOffset(content, m.viewport.Height)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	m.viewport.SetYOffset(offset)
 }
+
+// scrolloff is the minimum number of lines kept around the selected card when
+// there is enough content. This prevents the cursor line from being clipped at
+// the viewport edge while moving one item at a time.
+const scrolloff = 2
 
 func (m *Model) centerViewportOnCursor() {
 	m.viewport.Width = m.listWidth()
@@ -411,16 +445,17 @@ func (m *Model) centerViewportOnCursor() {
 	if offset < 0 {
 		offset = 0
 	}
-	totalLines := strings.Count(content, "\n") + 1
-	maxOffset := totalLines - m.viewport.Height
-	if maxOffset < 0 {
-		maxOffset = 0
-	}
+	maxOffset := maxContentOffset(content, m.viewport.Height)
 	if offset > maxOffset {
 		offset = maxOffset
 	}
 	m.viewport.SetContent(content)
 	m.viewport.SetYOffset(offset)
+}
+
+func maxContentOffset(content string, viewportHeight int) int {
+	totalLines := strings.Count(content, "\n") + 1
+	return max(0, totalLines-viewportHeight)
 }
 
 func (m *Model) contentHeight() int {
