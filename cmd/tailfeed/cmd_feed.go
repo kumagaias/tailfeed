@@ -245,7 +245,7 @@ func summaryCmd() *cobra.Command {
 				label = "last 7 days"
 			default:
 				articles, err = database.ListTodayArticles()
-				label = "today"
+				label = "last 24 hours"
 			}
 			if err != nil {
 				return err
@@ -254,11 +254,26 @@ func summaryCmd() *cobra.Command {
 				fmt.Printf("No articles for %s.\n", label)
 				return nil
 			}
+			originalCount := len(articles)
+			articles = summary.LimitArticles(articles)
 			summaryCfg, err := summary.LoadConfig()
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "Summarising %d articles (%s)…\n", len(articles), label)
+			if originalCount > len(articles) {
+				fmt.Fprintf(os.Stderr, "Summarising %d of %d articles (%s; newest first)…\n", len(articles), originalCount, label)
+			} else {
+				fmt.Fprintf(os.Stderr, "Summarising %d articles (%s)…\n", len(articles), label)
+			}
+			fmt.Fprintf(os.Stderr, "  API attempts: max %d; incomplete articles may be retried.\n", summary.MaxAPIAttempts)
+			progress := func(ev summary.ProgressEvent) {
+				switch ev.Phase {
+				case "start":
+					fmt.Fprintf(os.Stderr, "  API attempt %d/%d: summarising articles %d-%d/%d…\n", ev.Attempt, ev.MaxAttempts, ev.ChunkStart, ev.ChunkEnd, ev.TotalArticles)
+				case "done":
+					fmt.Fprintf(os.Stderr, "  API attempt %d/%d: done\n", ev.Attempt, ev.MaxAttempts)
+				}
+			}
 
 			var text string
 			mcpCfg, err := mcp.Load()
@@ -270,7 +285,7 @@ func summaryCmd() *cobra.Command {
 				if summaryCfg.Language == "" {
 					language = mcpCfg.SummaryLanguage()
 				}
-				text, err = summary.SummarizeWithMCPInLanguage(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language)
+				text, err = summary.SummarizeWithMCPInLanguageWithProgress(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language, progress)
 				if err != nil {
 					return err
 				}
@@ -280,7 +295,7 @@ func summaryCmd() *cobra.Command {
 					return err
 				}
 				language := summaryCfg.SummaryLanguage()
-				text, err = summary.SummarizeWithAPI(apiCfg.UserKey, label, articles, language, summaryCfg.Theme)
+				text, err = summary.SummarizeWithAPIProgress(apiCfg.UserKey, label, articles, language, summaryCfg.Theme, progress)
 				if err != nil {
 					return err
 				}

@@ -128,9 +128,9 @@ func (d *DB) ListRecentArticles(groupID *int64, limit int) ([]Article, error) {
 	return dedupeArticles(articles), nil
 }
 
-// ListTodayArticles returns all articles published or created today (local time).
+// ListTodayArticles returns all articles published or created in the last 24 hours.
 func (d *DB) ListTodayArticles() ([]Article, error) {
-	return d.listArticlesByDateRange(0, 1)
+	return d.listArticlesWithinDurationAt(time.Now(), 24*time.Hour)
 }
 
 // ListYesterdayArticles returns all articles published or created yesterday (local time).
@@ -150,6 +150,14 @@ func (d *DB) listArticlesByDateRange(daysOffset, duration int) ([]Article, error
 func (d *DB) listArticlesByDateRangeAt(now time.Time, daysOffset, duration int) ([]Article, error) {
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, daysOffset)
 	end := start.AddDate(0, 0, duration)
+	return d.listArticlesBetween(start, end)
+}
+
+func (d *DB) listArticlesWithinDurationAt(now time.Time, duration time.Duration) ([]Article, error) {
+	return d.listArticlesBetween(now.Add(-duration), now)
+}
+
+func (d *DB) listArticlesBetween(start, end time.Time) ([]Article, error) {
 	rows, err := d.Query(`
 		SELECT a.id, a.feed_id, COALESCE(f.title, f.url),
 		       a.guid, a.title, COALESCE(a.link,''), COALESCE(a.summary,''),

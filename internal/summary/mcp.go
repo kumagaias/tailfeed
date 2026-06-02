@@ -2,6 +2,7 @@ package summary
 
 import (
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 
@@ -11,8 +12,9 @@ import (
 
 const (
 	DefaultMaxContextRunes = 6000
-	MaxMCPAttempts         = 3
-	MaxArticlesPerAttempt  = 8
+	MaxMCPAttempts         = 5
+	MaxSummaryArticles     = 50
+	MaxArticlesPerAttempt  = 20
 	ArticleSummaryRunes    = 160
 )
 
@@ -28,6 +30,11 @@ func SummarizeWithMCP(cfg *mcp.Config, label string, articles []db.Article, maxC
 }
 
 func SummarizeWithMCPInLanguage(cfg *mcp.Config, label string, articles []db.Article, maxContextRunes int, theme string, language string) (string, error) {
+	return SummarizeWithMCPInLanguageWithProgress(cfg, label, articles, maxContextRunes, theme, language, nil)
+}
+
+func SummarizeWithMCPInLanguageWithProgress(cfg *mcp.Config, label string, articles []db.Article, maxContextRunes int, theme string, language string, progress ProgressFunc) (string, error) {
+	articles = LimitArticles(articles)
 	if maxContextRunes <= 0 {
 		maxContextRunes = DefaultMaxContextRunes
 	}
@@ -49,6 +56,7 @@ func SummarizeWithMCPInLanguage(cfg *mcp.Config, label string, articles []db.Art
 			chunk = pending[:1]
 			rest = pending[1:]
 		}
+		notifySummaryProgress(progress, "start", attempt, MaxMCPAttempts, nextNumber, len(chunk), len(articles))
 
 		text, err := mcp.Call(cfg, map[string]any{
 			"question": prompt(label, len(chunk), language, theme),
@@ -57,6 +65,7 @@ func SummarizeWithMCPInLanguage(cfg *mcp.Config, label string, articles []db.Art
 		if err != nil {
 			return "", err
 		}
+		notifySummaryProgress(progress, "done", attempt, MaxMCPAttempts, nextNumber, len(chunk), len(articles))
 
 		if exec := extractExecutiveSummary(text); exec != "" {
 			executive = append(executive, exec)
@@ -84,29 +93,174 @@ func SummarizeWithMCPInLanguage(cfg *mcp.Config, label string, articles []db.Art
 	body := strings.Join(out, "\n\n")
 	if len(executive) == 0 {
 		if len(important) == 0 {
-			return body, nil
+			return prependDigest(body, label, articles, language), nil
 		}
-		return "## " + importantHeading + "\n" + strings.Join(important, "\n") + "\n\n" + body, nil
+		return prependDigest("## "+importantHeading+"\n"+strings.Join(important, "\n")+"\n\n"+body, label, articles, language), nil
 	}
 	result := "## " + executiveHeading + "\n" + strings.Join(executive, "\n")
 	if len(important) > 0 {
 		result += "\n\n## " + importantHeading + "\n" + strings.Join(important, "\n")
 	}
-	return result + "\n\n" + body, nil
+	return prependDigest(result+"\n\n"+body, label, articles, language), nil
+}
+
+func LimitArticles(articles []db.Article) []db.Article {
+	if len(articles) <= MaxSummaryArticles {
+		return articles
+	}
+	return articles[:MaxSummaryArticles]
+}
+
+func prependDigest(text string, _ string, articles []db.Article, language string) string {
+	digest := buildDigest(articles, language)
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return digest
+	}
+	return digest + "\n\n" + text
+}
+
+func buildDigest(articles []db.Article, language string) string {
+	heading := "Today's Digest"
+	scope := fmt.Sprintf("Latest %d articles summarized.", len(articles))
+	if isJapaneseLanguage(language) {
+		heading = "本日のダイジェスト"
+		scope = fmt.Sprintf("最新 %d 件の要約", len(articles))
+	}
+	var b strings.Builder
+	b.WriteString("## " + heading + "\n")
+	b.WriteString(scope + "\n")
+	if len(articles) == 0 {
+		if isJapaneseLanguage(language) {
+			b.WriteString("対象記事はありません。")
+		} else {
+			b.WriteString("No articles to summarize.")
+		}
+		return b.String()
+	}
+	lines := englishDigestLines(articles)
+	if isJapaneseLanguage(language) {
+		lines = japaneseDigestLines(articles)
+	}
+	for _, line := range lines {
+		b.WriteString(line + "\n")
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func japaneseDigestLines(articles []db.Article) []string {
+	topics := digestTopics(articles)
+	lines := []string{
+		"開発現場で使うツール、AI、クラウド運用の更新が中心です。",
+	}
+	if topics["ai"] > 0 {
+		lines = append(lines, "生成AIやエージェント活用は、開発体験に近い領域へ広がっています。")
+	}
+	if topics["devtools"] > 0 {
+		lines = append(lines, "ターミナル、エディタ、GitHub 周辺など日常的な開発環境の改善が目立ちます。")
+	}
+	if topics["cloud"] > 0 {
+		lines = append(lines, "AWS やインフラ関連では、運用しやすさと移行のしやすさが焦点です。")
+	}
+	if topics["security"] > 0 {
+		lines = append(lines, "セキュリティや依存関係管理は、実装判断に直結する話題として扱われています。")
+	}
+	if topics["release"] > 0 {
+		lines = append(lines, "新機能やリリース情報は、すぐ試せる実務寄りの内容が多めです。")
+	}
+	if len(lines) < 5 {
+		lines = append(lines, "個別記事は、技術選定や日々のワークフロー改善の材料として読めます。")
+	}
+	if len(lines) < 5 {
+		lines = append(lines, "全体として、導入判断に必要な変化を短時間で把握できる構成です。")
+	}
+	return lines[:min(5, len(lines))]
+}
+
+func englishDigestLines(articles []db.Article) []string {
+	topics := digestTopics(articles)
+	lines := []string{
+		"Today's articles focus on developer tools, AI, and cloud operations.",
+	}
+	if topics["ai"] > 0 {
+		lines = append(lines, "AI and agent workflows continue moving closer to everyday development work.")
+	}
+	if topics["devtools"] > 0 {
+		lines = append(lines, "Terminals, editors, GitHub, and local tooling show practical workflow improvements.")
+	}
+	if topics["cloud"] > 0 {
+		lines = append(lines, "Cloud and infrastructure updates emphasize operations, migration, and maintainability.")
+	}
+	if topics["security"] > 0 {
+		lines = append(lines, "Security and dependency topics remain relevant to implementation decisions.")
+	}
+	if topics["release"] > 0 {
+		lines = append(lines, "Release notes and new features provide concrete items to evaluate or try.")
+	}
+	if len(lines) < 5 {
+		lines = append(lines, "The set is useful for scanning changes that may affect technical choices.")
+	}
+	if len(lines) < 5 {
+		lines = append(lines, "Overall, it favors practical updates over broad industry commentary.")
+	}
+	return lines[:min(5, len(lines))]
+}
+
+func digestTopics(articles []db.Article) map[string]int {
+	topics := map[string]int{
+		"ai":       0,
+		"devtools": 0,
+		"cloud":    0,
+		"security": 0,
+		"release":  0,
+	}
+	for _, a := range articles {
+		text := strings.ToLower(a.Title + " " + PlainText(a.Summary, 160))
+		for topic, keywords := range map[string][]string{
+			"ai":       {"ai", "chatgpt", "copilot", "agent", "llm", "生成ai", "人工知能"},
+			"devtools": {"github", "git", "terminal", "editor", "ide", "cli", "alacritty", "ターミナル", "エディタ"},
+			"cloud":    {"aws", "lambda", "cloud", "kubernetes", "docker", "infra", "インフラ", "クラウド"},
+			"security": {"security", "vulnerability", "cve", "auth", "サイバー", "脆弱", "認証"},
+			"release":  {"release", "launch", "update", "project", "新機能", "リリース", "公開"},
+		} {
+			for _, keyword := range keywords {
+				if strings.Contains(text, keyword) {
+					topics[topic]++
+					break
+				}
+			}
+		}
+	}
+	return topics
 }
 
 func prompt(label string, articleCount int, language string, theme string) string {
 	theme = strings.TrimSpace(theme)
-	themeLine := "No user theme is set."
+	themeXML := "<theme>No user theme is set.</theme>"
 	if theme != "" {
-		themeLine = fmt.Sprintf("User theme: %s. Use it to prioritize the executive summary and important articles, but still include every article exactly once.", theme)
+		themeXML = fmt.Sprintf("<theme>%s</theme>", xmlEscape(theme))
 	}
 	executiveHeading, importantHeading := summaryHeadings(language)
-	return fmt.Sprintf(`You are a senior engineer's daily briefing assistant. Summarize %s's %d articles in %s for a technical audience.
-%s
-Write all generated summary content in %s, including section headings and bullet text.
-Keep original article titles exactly as provided, even when they are in another language.
-Start with a %s section at the very top, then a %s section with the most important 2-3 article links. Then include every article exactly once. Keep the whole response compact. Use exactly this Markdown shape:
+	return fmt.Sprintf(`<summary_request>
+  <role>You are a senior engineer's daily briefing assistant.</role>
+  <task>Summarize the provided articles for a technical audience.</task>
+  <inputs>
+    <period>%s</period>
+    <article_count>%d</article_count>
+    <language>%s</language>
+    %s
+  </inputs>
+  <rules>
+    <rule>Write every generated heading, sentence, reason, and bullet in %s.</rule>
+    <rule>Keep original article titles exactly as provided, even when titles use another language.</rule>
+    <rule>Include every article from the XML context exactly once in the numbered article list.</rule>
+    <rule>Use numbered Markdown links for article titles. The title link is the only URL location.</rule>
+    <rule>Do not write separate URL lines.</rule>
+    <rule>Do not write labels such as TL;DR, Summary, Key Points, or 要約 before summary sentences.</rule>
+    <rule>If a user theme is set, use it to prioritize the executive summary and important articles, but do not omit any article.</rule>
+    <rule>Do not add sections other than the exact Markdown contract below.</rule>
+  </rules>
+  <output_contract format="markdown">
 ## %s
 - Executive summary point 1 in %s, max 55 characters
 - Executive summary point 2 in %s, max 55 characters
@@ -116,11 +270,11 @@ Start with a %s section at the very top, then a %s section with the most importa
 - [Original article title](article URL) - reason in %s, max 45 characters
 
 1. [Original article title](article URL)
-  - Summary sentence in %s, max 60 characters. Do not write a label like "Summary", "TL;DR", or "要約".
+  - Summary sentence in %s, max 60 characters
     - Key technical point 1 in %s, max 45 characters
     - Key technical point 2 in %s, max 45 characters
-Do not write a separate URL line under article titles; the article title Markdown link is the URL.
-Do not add any other sections.`, label, articleCount, language, themeLine, language, executiveHeading, importantHeading, executiveHeading, language, language, importantHeading, language, language, language, language, language)
+  </output_contract>
+</summary_request>`, xmlEscape(label), articleCount, xmlEscape(language), themeXML, xmlEscape(language), executiveHeading, xmlEscape(language), xmlEscape(language), importantHeading, xmlEscape(language), xmlEscape(language), xmlEscape(language), xmlEscape(language), xmlEscape(language))
 }
 
 func summaryHeadings(language string) (string, string) {
@@ -137,10 +291,21 @@ func isJapaneseLanguage(language string) bool {
 
 func buildContext(articles []db.Article) string {
 	var b strings.Builder
-	for _, a := range articles {
-		b.WriteString(fmt.Sprintf("## %s\nURL: %s\n%s\n\n", a.Title, a.Link, PlainText(a.Summary, ArticleSummaryRunes)))
+	b.WriteString("<articles>\n")
+	for i, a := range articles {
+		b.WriteString(fmt.Sprintf(`  <article index="%d">
+    <title>%s</title>
+    <url>%s</url>
+    <summary>%s</summary>
+  </article>
+`, i+1, xmlEscape(a.Title), xmlEscape(a.Link), xmlEscape(PlainText(a.Summary, ArticleSummaryRunes))))
 	}
+	b.WriteString("</articles>")
 	return b.String()
+}
+
+func xmlEscape(s string) string {
+	return html.EscapeString(strings.TrimSpace(s))
 }
 
 func nextChunk(articles []db.Article, maxRunes int) ([]db.Article, []db.Article) {
@@ -180,28 +345,61 @@ func completeArticleBlocks(text string, articles []db.Article, startNumber int) 
 
 	var out strings.Builder
 	completed := 0
-	for i, block := range blocks {
-		if i >= len(articles) || bulletCount(block) < 3 {
+	for i := range articles {
+		if i >= len(blocks) {
+			appendFallbackArticleBlock(&out, articles[i], startNumber+i, "AI 出力に含まれなかったため自動補完しました。")
+			completed++
+			continue
+		}
+		block := blocks[i]
+		if len(block) == 0 {
 			break
 		}
 		if completed > 0 {
 			out.WriteString("\n\n")
 		}
-		out.WriteString(fmt.Sprintf("%d. [%s](%s)\n", startNumber+completed, articles[i].Title, articles[i].Link))
-		for _, line := range block[1:] {
-			if strings.HasPrefix(strings.TrimSpace(line), "#") {
-				break
+		out.WriteString(fmt.Sprintf("%d. [%s](%s)\n", startNumber+i, articles[i].Title, articles[i].Link))
+		wroteContent := false
+		if bulletCount(block) > 0 {
+			for _, line := range block[1:] {
+				if strings.HasPrefix(strings.TrimSpace(line), "#") {
+					break
+				}
+				if isArticleURLLine(line, articles[i].Link) {
+					continue
+				}
+				if strings.TrimSpace(line) != "" {
+					wroteContent = true
+				}
+				out.WriteString(line)
+				out.WriteByte('\n')
 			}
-			if isArticleURLLine(line, articles[i].Link) {
-				continue
-			}
-			out.WriteString(line)
-			out.WriteByte('\n')
+		}
+		if !wroteContent {
+			appendFallbackArticleDetails(&out, articles[i], "AI 出力が不完全だったため自動補完しました。")
 		}
 		completed++
 	}
 
 	return strings.TrimSpace(out.String()), completed
+}
+
+func appendFallbackArticleBlock(out *strings.Builder, article db.Article, number int, reason string) {
+	if out.Len() > 0 {
+		out.WriteString("\n\n")
+	}
+	out.WriteString(fmt.Sprintf("%d. [%s](%s)\n", number, article.Title, article.Link))
+	appendFallbackArticleDetails(out, article, reason)
+}
+
+func appendFallbackArticleDetails(out *strings.Builder, article db.Article, reason string) {
+	s := PlainText(article.Summary, 70)
+	if s == "" {
+		s = "要約を生成できませんでした。"
+	}
+	out.WriteString("  - " + s + "\n")
+	out.WriteString("    - 詳細は元記事を確認してください。\n")
+	out.WriteString("    - " + reason + "\n")
 }
 
 func bulletCount(lines []string) int {

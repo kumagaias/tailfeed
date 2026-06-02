@@ -43,7 +43,7 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 		label = "last 7 days"
 	default:
 		articles, err = m.db.ListTodayArticles()
-		label = "today"
+		label = "last 24 hours"
 	}
 	if err != nil {
 		return "summary " + period + ": " + err.Error(), nil
@@ -51,6 +51,8 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 	if len(articles) == 0 {
 		return "summary " + period + ": no articles for " + label, nil
 	}
+	originalCount := len(articles)
+	articles = summary.LimitArticles(articles)
 	summaryCfg, err := summary.LoadConfig()
 	if err != nil {
 		return "summary config: " + err.Error(), nil
@@ -60,8 +62,12 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 	if err != nil {
 		return "mcp: " + err.Error(), nil
 	}
+	status := fmt.Sprintf("summarising %d articles (%s)…", len(articles), label)
+	if originalCount > len(articles) {
+		status = fmt.Sprintf("summarising %d of %d articles (%s; newest first)…", len(articles), originalCount, label)
+	}
 	if mcpCfg != nil {
-		return fmt.Sprintf("summarising %d articles (%s)…", len(articles), label), func() tea.Msg {
+		return status, func() tea.Msg {
 			language := summaryCfg.SummaryLanguage()
 			if summaryCfg.Language == "" {
 				language = mcpCfg.SummaryLanguage()
@@ -78,7 +84,7 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 		}
 	}
 
-	return fmt.Sprintf("summarising %d articles (%s)…", len(articles), label), func() tea.Msg {
+	return status, func() tea.Msg {
 		apiCfg, err := api.LoadOrRegister()
 		if err != nil {
 			return mcpResultMsg{text: "api: " + err.Error()}

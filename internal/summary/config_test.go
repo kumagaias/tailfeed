@@ -31,12 +31,13 @@ func TestSummaryConfigDefaultsLanguageToJapanese(t *testing.T) {
 }
 
 func TestThemeWithLanguageInstruction(t *testing.T) {
-	got := ThemeWithLanguageInstruction("AI infra", "Japanese")
+	got := ThemeWithLanguageInstruction("AI <infra>", "Japanese")
 	for _, want := range []string{
-		"Write all generated summary content",
-		"in Japanese",
-		"Keep original article titles exactly as provided",
-		"User theme: AI infra",
+		"<summary_request>",
+		"<language>Japanese</language>",
+		"<theme>AI &lt;infra&gt;</theme>",
+		"Write every generated heading, sentence, reason, and bullet in Japanese.",
+		"Keep original article titles exactly as provided.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in theme instruction, got:\n%s", want, got)

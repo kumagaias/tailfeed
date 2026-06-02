@@ -138,6 +138,9 @@ func TestBuildSummaryHTML_linksSummaryHeadingsWithoutArticleIndex(t *testing.T) 
 	if !strings.Contains(html, `<h2><a href="https://example.com/a" target="_blank">1. Example A</a></h2>`) {
 		t.Fatalf("expected summary heading to link to article, got:\n%s", html)
 	}
+	if !strings.Contains(html, `<div class="scope">最新 1 件の要約</div>`) {
+		t.Fatalf("expected latest article scope below title, got:\n%s", html)
+	}
 	if strings.Contains(html, `<div class="articles">`) || strings.Contains(html, "📰 Articles") {
 		t.Fatalf("expected no separate article index, got:\n%s", html)
 	}
@@ -300,8 +303,8 @@ func TestRenderCardDoesNotExceedListWidth(t *testing.T) {
 
 	card := m.renderCard(0, m.articles[0], m.listWidth()-4)
 	lines := strings.Split(card, "\n")
-	if len(lines) > summaryLinesPerCard+4 {
-		t.Fatalf("expected at most %d card lines, got %d:\n%s", summaryLinesPerCard+4, len(lines), card)
+	if len(lines) != summaryLinesPerCard+2 {
+		t.Fatalf("expected fixed %d card lines, got %d:\n%s", summaryLinesPerCard+2, len(lines), card)
 	}
 	for _, line := range lines {
 		if w := lipgloss.Width(line); w > m.listWidth() {
@@ -316,8 +319,76 @@ func TestRenderCardOmitsEmptySummarySpace(t *testing.T) {
 
 	card := m.renderCard(0, m.articles[0], m.listWidth()-4)
 	lines := strings.Split(card, "\n")
-	if len(lines) != 4 {
-		t.Fatalf("expected compact card with 4 lines, got %d:\n%s", len(lines), card)
+	if len(lines) != summaryLinesPerCard+2 {
+		t.Fatalf("expected fixed %d card lines, got %d:\n%s", summaryLinesPerCard+2, len(lines), card)
+	}
+}
+
+func TestRenderCardKeepsFixedHeight(t *testing.T) {
+	m := cursorTestModel(2, 40, 16)
+	m.articles[0].Summary = ""
+	m.articles[1].Summary = strings.Repeat("long summary ", 50)
+
+	shortCardLines := strings.Split(m.renderCard(0, m.articles[0], m.listWidth()-4), "\n")
+	longCardLines := strings.Split(m.renderCard(1, m.articles[1], m.listWidth()-4), "\n")
+	if len(shortCardLines) != len(longCardLines) {
+		t.Fatalf("expected fixed card height, short=%d long=%d", len(shortCardLines), len(longCardLines))
+	}
+	if len(shortCardLines) != summaryLinesPerCard+2 {
+		t.Fatalf("expected fixed %d card lines, got %d", summaryLinesPerCard+2, len(shortCardLines))
+	}
+}
+
+func TestRenderCardOmitsDuplicateTitleSummary(t *testing.T) {
+	m := cursorTestModel(1, 40, 16)
+	m.cursor = 1
+	m.articles[0].IsRead = true
+	m.articles[0].Title = "Same title"
+	m.articles[0].Summary = "Same title"
+
+	card := m.renderCard(0, m.articles[0], m.listWidth()-4)
+	if got := strings.Count(card, m.articles[0].Title); got != 1 {
+		t.Fatalf("expected duplicate title summary to be omitted, title count=%d:\n%s", got, card)
+	}
+}
+
+func TestArticleAtLineIgnoresGap(t *testing.T) {
+	m := cursorTestModel(2, 40, 16)
+	m.articles[0].Summary = ""
+	m.articles[1].Summary = ""
+
+	firstTop, firstBottom := m.articleLineRange(0)
+	if firstTop != 0 {
+		t.Fatalf("expected first article to start at 0, got %d", firstTop)
+	}
+	idx, _ := m.articleAtLine(firstBottom)
+	if idx != -1 {
+		t.Fatalf("expected gap line to have no article, got %d", idx)
+	}
+	idx, _ = m.articleAtLine(firstBottom + articleGapLines)
+	if idx != 1 {
+		t.Fatalf("expected second article after gap, got %d", idx)
+	}
+}
+
+func TestRenderArticlesUsesSeparatorForGap(t *testing.T) {
+	m := cursorTestModel(2, 40, 16)
+	m.articles[0].Summary = ""
+	m.articles[1].Summary = ""
+
+	firstTop, firstBottom := m.articleLineRange(0)
+	if firstTop != 0 {
+		t.Fatalf("expected first article to start at 0, got %d", firstTop)
+	}
+	lines := strings.Split(m.renderArticles(), "\n")
+	if firstBottom >= len(lines) {
+		t.Fatalf("expected separator line at %d, got %d lines", firstBottom, len(lines))
+	}
+	if !strings.Contains(lines[firstBottom], "─") {
+		t.Fatalf("expected separator line, got %q", lines[firstBottom])
+	}
+	if w := lipgloss.Width(lines[firstBottom]); w > m.listWidth() {
+		t.Fatalf("expected separator width <= %d, got %d for %q", m.listWidth(), w, lines[firstBottom])
 	}
 }
 

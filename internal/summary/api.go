@@ -8,13 +8,18 @@ import (
 	"github.com/kumagaias/tailfeed/internal/db"
 )
 
-const MaxAPIAttempts = 3
+const MaxAPIAttempts = 5
 
 var apiSummary = api.Summary
 
 // SummarizeWithAPI summarizes articles through the tailfeed API in chunks so
 // larger daily summaries do not exceed the API response timeout.
 func SummarizeWithAPI(userKey, label string, articles []db.Article, language, theme string) (string, error) {
+	return SummarizeWithAPIProgress(userKey, label, articles, language, theme, nil)
+}
+
+func SummarizeWithAPIProgress(userKey, label string, articles []db.Article, language, theme string, progress ProgressFunc) (string, error) {
+	articles = LimitArticles(articles)
 	language = strings.TrimSpace(language)
 	if language == "" {
 		language = "Japanese"
@@ -29,6 +34,7 @@ func SummarizeWithAPI(userKey, label string, articles []db.Article, language, th
 			chunk = pending[:1]
 			rest = pending[1:]
 		}
+		notifySummaryProgress(progress, "start", attempt, MaxAPIAttempts, completed+1, len(chunk), len(articles))
 
 		apiArticles := make([]api.SummaryArticle, len(chunk))
 		for i, a := range chunk {
@@ -40,11 +46,17 @@ func SummarizeWithAPI(userKey, label string, articles []db.Article, language, th
 		}
 
 		chunkTheme := ThemeWithLanguageInstruction(theme, language)
-		chunkTheme += fmt.Sprintf(" This is one chunk of %s. Include every provided article exactly once using numbered Markdown links. Do not add a separate URL line.", label)
+		chunkTheme += fmt.Sprintf(`
+<chunk>
+  <period>%s</period>
+  <rule>This is one chunk of a larger summary. Include every provided article exactly once.</rule>
+  <rule>Number article links in the order provided.</rule>
+</chunk>`, xmlEscape(label))
 		text, err := apiSummary(userKey, apiArticles, language, chunkTheme)
 		if err != nil {
 			return "", err
 		}
+		notifySummaryProgress(progress, "done", attempt, MaxAPIAttempts, completed+1, len(chunk), len(articles))
 		normalized, chunkCompleted := completeArticleBlocks(text, chunk, completed+1)
 		if chunkCompleted > 0 {
 			out = append(out, normalized)
@@ -65,5 +77,5 @@ func SummarizeWithAPI(userKey, label string, articles []db.Article, language, th
 		out = append(out, fallbackBlocksWithReason(pending, completed+1, "API 呼び出し上限により自動補完しました。"))
 	}
 
-	return strings.Join(out, "\n\n"), nil
+	return prependDigest(strings.Join(out, "\n\n"), label, articles, language), nil
 }

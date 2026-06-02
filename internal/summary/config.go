@@ -80,10 +80,21 @@ func ThemeWithLanguageInstruction(theme, language string) string {
 	if language == "" {
 		language = "Japanese"
 	}
-	instruction := "Write all generated summary content, labels, and bullet text in " + language + ". Keep original article titles exactly as provided. Use simple list items; do not write labels like TL;DR, Summary, or Key Points before summary sentences."
 	theme = strings.TrimSpace(theme)
-	if theme == "" {
-		return instruction
+	themeXML := "<theme>No user theme is set.</theme>"
+	if theme != "" {
+		themeXML = "<theme>" + xmlEscape(theme) + "</theme>"
 	}
-	return instruction + " User theme: " + theme
+	return `<summary_request>
+  <language>` + xmlEscape(language) + `</language>
+  ` + themeXML + `
+  <rules>
+    <rule>Write every generated heading, sentence, reason, and bullet in ` + xmlEscape(language) + `.</rule>
+    <rule>Keep original article titles exactly as provided.</rule>
+    <rule>Include every provided article exactly once using numbered Markdown links.</rule>
+    <rule>Do not write a separate URL line; the article title Markdown link is the URL.</rule>
+    <rule>Do not write labels like TL;DR, Summary, Key Points, or 要約 before summary sentences.</rule>
+    <rule>Keep the output compact and practical for a technical reader.</rule>
+  </rules>
+</summary_request>`
 }

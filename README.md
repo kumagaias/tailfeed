@@ -21,7 +21,7 @@ brew install kumagaias/tap/tailfeed
 ```bash
 tailfeed                  # open TUI
 tailfeed -f               # stream new articles
-tailfeed summary today    # AI summary → HTML report
+tailfeed summary today    # AI summary of the last 24h → HTML report
 tailfeed summary language Japanese
 tailfeed add <url>        # subscribe
 tailfeed add sample       # add popular feeds (--lang ja for Japanese)
@@ -53,7 +53,7 @@ group new <name>   create group
 group del [name]   delete group
 suggest            AI feed suggestions
 summary            summarise current article
-summary today      summarise today's articles + HTML report
+summary today      summarise articles from the last 24h + HTML report
 summary language   set/show summary language
 ```
 

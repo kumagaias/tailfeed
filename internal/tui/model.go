@@ -29,7 +29,10 @@ const articlesLimit = 1000
 const articlesPageSize = 50
 
 // summaryLinesPerCard is the maximum number of summary lines shown in a card.
-const summaryLinesPerCard = 3
+const summaryLinesPerCard = 1
+
+// articleGapLines is the blank space between article cards in the list.
+const articleGapLines = 1
 
 // inputBoxHeight is the height of the command input box including its border.
 const inputBoxHeight = 3 // border-top + content + border-bottom

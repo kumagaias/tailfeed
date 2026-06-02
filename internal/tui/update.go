@@ -440,6 +440,9 @@ func (m *Model) articleLineRange(idx int) (int, int) {
 			return top, top + cardLines
 		}
 		top += cardLines
+		if i < len(m.articles)-1 {
+			top += articleGapLines
+		}
 	}
 	return 0, 0
 }
@@ -459,6 +462,12 @@ func (m *Model) articleAtLine(line int) (int, int) {
 			return i, line - top
 		}
 		top += cardLines
+		if i < len(m.articles)-1 {
+			if line >= top && line < top+articleGapLines {
+				return -1, 0
+			}
+			top += articleGapLines
+		}
 	}
 	return -1, 0
 }

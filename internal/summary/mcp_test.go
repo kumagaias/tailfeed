@@ -7,10 +7,10 @@ import (
 	"github.com/kumagaias/tailfeed/internal/db"
 )
 
-func TestCompleteArticleBlocksKeepsOnlyCompleteBlocks(t *testing.T) {
+func TestCompleteArticleBlocksFillsIncompleteBlocks(t *testing.T) {
 	articles := []db.Article{
-		{Title: "First", Link: "https://example.com/1"},
-		{Title: "Second", Link: "https://example.com/2"},
+		{Title: "First", Link: "https://example.com/1", Summary: "First summary"},
+		{Title: "Second", Link: "https://example.com/2", Summary: "Second summary"},
 	}
 	text := `1. [wrong](https://wrong.example/1)
   - Summary
@@ -21,14 +21,39 @@ func TestCompleteArticleBlocksKeepsOnlyCompleteBlocks(t *testing.T) {
   - Summary only`
 
 	got, completed := completeArticleBlocks(text, articles, 3)
-	if completed != 1 {
-		t.Fatalf("completed = %d, want 1", completed)
+	if completed != 2 {
+		t.Fatalf("completed = %d, want 2", completed)
 	}
 	if !strings.Contains(got, "3. [First](https://example.com/1)") {
 		t.Fatalf("expected canonical first article link, got:\n%s", got)
 	}
-	if strings.Contains(got, "Second") {
-		t.Fatalf("expected incomplete second article to be excluded, got:\n%s", got)
+	if !strings.Contains(got, "4. [Second](https://example.com/2)") {
+		t.Fatalf("expected incomplete second article to be retained, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Summary only") {
+		t.Fatalf("expected incomplete content to be preserved, got:\n%s", got)
+	}
+}
+
+func TestCompleteArticleBlocksFillsMissingArticles(t *testing.T) {
+	articles := []db.Article{
+		{Title: "First", Link: "https://example.com/1", Summary: "First summary"},
+		{Title: "Second", Link: "https://example.com/2", Summary: "Second summary"},
+	}
+	text := `1. [wrong](https://wrong.example/1)
+  - Summary
+    - Point 1
+    - Point 2`
+
+	got, completed := completeArticleBlocks(text, articles, 10)
+	if completed != 2 {
+		t.Fatalf("completed = %d, want 2", completed)
+	}
+	if !strings.Contains(got, "10. [First](https://example.com/1)") || !strings.Contains(got, "11. [Second](https://example.com/2)") {
+		t.Fatalf("expected both articles to be completed, got:\n%s", got)
+	}
+	if !strings.Contains(got, "AI 出力に含まれなかったため自動補完しました。") {
+		t.Fatalf("expected missing article fallback reason, got:\n%s", got)
 	}
 }
 
@@ -84,15 +109,15 @@ func TestExtractImportantArticles(t *testing.T) {
 }
 
 func TestPromptRequiresJapaneseExecutiveSummaryFirst(t *testing.T) {
-	got := prompt("today", 2, "Japanese", "AI infra")
+	got := prompt("today", 2, "Japanese", "AI <infra>")
 	for _, want := range []string{
-		`Write all generated summary content in Japanese`,
-		`Keep original article titles exactly as provided`,
+		`<summary_request>`,
+		`<language>Japanese</language>`,
+		`<rule>Write every generated heading, sentence, reason, and bullet in Japanese.</rule>`,
 		`## 今日の要点`,
 		`## 重要記事`,
-		`Start with a 今日の要点 section at the very top`,
-		`User theme: AI infra`,
-		`Do not write a separate URL line under article titles`,
+		`<theme>AI &lt;infra&gt;</theme>`,
+		`Do not write separate URL lines.`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in prompt, got:\n%s", want, got)
@@ -103,12 +128,33 @@ func TestPromptRequiresJapaneseExecutiveSummaryFirst(t *testing.T) {
 func TestPromptUsesEnglishHeadingsForEnglish(t *testing.T) {
 	got := prompt("today", 2, "English", "")
 	for _, want := range []string{
-		`Write all generated summary content in English`,
+		`<language>English</language>`,
+		`<theme>No user theme is set.</theme>`,
 		`## Executive Summary`,
 		`## Important Articles`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in prompt, got:\n%s", want, got)
+		}
+	}
+}
+
+func TestBuildContextUsesXMLAndEscapesArticleFields(t *testing.T) {
+	got := buildContext([]db.Article{{
+		Title:   "A < B",
+		Link:    "https://example.com/?a=1&b=2",
+		Summary: "Use <tag> safely",
+	}})
+
+	for _, want := range []string{
+		`<articles>`,
+		`<article index="1">`,
+		`<title>A &lt; B</title>`,
+		`<url>https://example.com/?a=1&amp;b=2</url>`,
+		`<summary>Use safely</summary>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in XML context, got:\n%s", want, got)
 		}
 	}
 }
@@ -158,6 +204,52 @@ func TestNextChunkCapsArticlesPerAttempt(t *testing.T) {
 	chunk, rest := nextChunk(articles, 10000)
 	if len(chunk) != MaxArticlesPerAttempt || len(rest) != 2 {
 		t.Fatalf("got chunk=%d rest=%d, want chunk=%d rest=2", len(chunk), len(rest), MaxArticlesPerAttempt)
+	}
+}
+
+func TestLimitArticlesCapsAtSummaryLimit(t *testing.T) {
+	articles := make([]db.Article, MaxSummaryArticles+1)
+
+	got := LimitArticles(articles)
+	if len(got) != MaxSummaryArticles {
+		t.Fatalf("len = %d, want %d", len(got), MaxSummaryArticles)
+	}
+}
+
+func TestBuildDigestUsesFiveLinesAtTop(t *testing.T) {
+	articles := make([]db.Article, 6)
+	for i := range articles {
+		articles[i] = db.Article{
+			Title:   "Article",
+			Summary: "GitHub Copilot and AWS Lambda release update",
+		}
+	}
+
+	got := buildDigest(articles, "Japanese")
+	if !strings.HasPrefix(got, "## 本日のダイジェスト\n") {
+		t.Fatalf("expected Japanese digest heading, got:\n%s", got)
+	}
+	if !strings.Contains(got, "最新 6 件の要約") {
+		t.Fatalf("expected latest article scope, got:\n%s", got)
+	}
+	lines := strings.Split(got, "\n")
+	if len(lines) != 7 {
+		t.Fatalf("digest lines = %d, want 7 including heading and scope:\n%s", len(lines), got)
+	}
+	if strings.Contains(got, "ほか") || strings.Contains(got, "last 24 hours") {
+		t.Fatalf("expected no remaining article count line, got:\n%s", got)
+	}
+	if strings.Contains(got, "「Article」") || strings.Contains(got, "GitHub Copilot and AWS") {
+		t.Fatalf("expected digest to avoid raw article/title excerpts, got:\n%s", got)
+	}
+	for _, want := range []string{
+		"生成AIやエージェント活用",
+		"日常的な開発環境の改善",
+		"AWS やインフラ関連",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected digest topic %q, got:\n%s", want, got)
+		}
 	}
 }
 

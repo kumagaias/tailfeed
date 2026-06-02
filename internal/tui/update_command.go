@@ -197,7 +197,7 @@ func (m *Model) cmdHelp() string {
 		"  group del [name]      delete group (omit name = current group)",
 		"  suggest               suggest related feeds (mcp required)",
 		"  summary               summarize current article (mcp required)",
-		"  summary today         summarize all articles from today (mcp required)",
+		"  summary today         summarize articles from the last 24 hours (mcp required)",
 		"  summary yesterday     summarize all articles from yesterday (mcp required)",
 		"  summary week          summarize articles from the last 7 days (mcp required)",
 		"  summary theme [text]  set or show the saved summary theme",

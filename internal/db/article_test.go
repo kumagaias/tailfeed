@@ -25,7 +25,7 @@ func openArticleTestDB(t *testing.T) *DB {
 	return d
 }
 
-func TestListTodayArticlesUsesLocalDayBoundaries(t *testing.T) {
+func TestListTodayArticlesUsesLast24Hours(t *testing.T) {
 	d := openArticleTestDB(t)
 	f, err := d.AddFeed("https://example.com/rss", nil)
 	if err != nil {
@@ -43,24 +43,24 @@ func TestListTodayArticlesUsesLocalDayBoundaries(t *testing.T) {
 		published time.Time
 	}{
 		{
-			guid:      "before-local-day",
-			title:     "Before local day",
-			published: time.Date(2026, 5, 20, 14, 59, 59, 0, time.UTC),
+			guid:      "older-than-24h",
+			title:     "Older than 24 hours",
+			published: now.Add(-24*time.Hour - time.Second),
 		},
 		{
-			guid:      "utc-previous-day-local-today",
-			title:     "UTC previous day, local today",
-			published: time.Date(2026, 5, 20, 16, 0, 0, 0, time.UTC),
+			guid:      "previous-local-day-within-24h",
+			title:     "Previous local day within 24 hours",
+			published: now.Add(-23 * time.Hour),
 		},
 		{
-			guid:      "local-today",
-			title:     "Local today",
-			published: time.Date(2026, 5, 21, 12, 0, 0, 0, loc),
+			guid:      "recent",
+			title:     "Recent",
+			published: now.Add(-time.Hour),
 		},
 		{
-			guid:      "after-local-day",
-			title:     "After local day",
-			published: time.Date(2026, 5, 21, 15, 0, 0, 0, time.UTC),
+			guid:      "future",
+			title:     "Future",
+			published: now.Add(time.Hour),
 		},
 	}
 
@@ -77,21 +77,21 @@ func TestListTodayArticlesUsesLocalDayBoundaries(t *testing.T) {
 			t.Fatalf("SaveArticle %s: %v", tc.guid, err)
 		}
 	}
-	articles, err := d.listArticlesByDateRangeAt(now, 0, 1)
+	articles, err := d.listArticlesWithinDurationAt(now, 24*time.Hour)
 	if err != nil {
-		t.Fatalf("listArticlesByDateRangeAt: %v", err)
+		t.Fatalf("listArticlesWithinDurationAt: %v", err)
 	}
 	if len(articles) != 2 {
-		t.Fatalf("expected 2 articles for local today, got %d: %#v", len(articles), articles)
+		t.Fatalf("expected 2 articles for last 24 hours, got %d: %#v", len(articles), articles)
 	}
 
 	got := map[string]bool{}
 	for _, a := range articles {
 		got[a.GUID] = true
 	}
-	for _, guid := range []string{"utc-previous-day-local-today", "local-today"} {
+	for _, guid := range []string{"previous-local-day-within-24h", "recent"} {
 		if !got[guid] {
-			t.Fatalf("expected %q in local today results, got %#v", guid, got)
+			t.Fatalf("expected %q in last 24 hours results, got %#v", guid, got)
 		}
 	}
 }
@@ -158,9 +158,9 @@ func TestListTodayArticlesDedupesExistingNormalizedLinks(t *testing.T) {
 		t.Fatalf("insert duplicate: %v", err)
 	}
 
-	articles, err := d.listArticlesByDateRangeAt(now, 0, 1)
+	articles, err := d.listArticlesWithinDurationAt(now, 24*time.Hour)
 	if err != nil {
-		t.Fatalf("listArticlesByDateRangeAt: %v", err)
+		t.Fatalf("listArticlesWithinDurationAt: %v", err)
 	}
 	if len(articles) != 1 {
 		t.Fatalf("expected 1 deduped article, got %d: %#v", len(articles), articles)

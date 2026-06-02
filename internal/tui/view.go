@@ -109,9 +109,19 @@ func (m *Model) renderArticles() string {
 		b.WriteString(m.renderCard(i, a, innerWidth))
 		if i < len(m.articles)-1 {
 			b.WriteString("\n")
+			b.WriteString(m.renderArticleSeparator())
+			b.WriteString("\n")
 		}
 	}
 	return b.String()
+}
+
+func (m *Model) renderArticleSeparator() string {
+	width := m.listWidth() - 2
+	if width < 1 {
+		width = 1
+	}
+	return styleMeta.Render(" " + strings.Repeat("─", width-1))
 }
 
 // renderCard renders a single article card.
@@ -140,7 +150,7 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 
 	summaryFull := strings.Join(strings.Fields(stripHTML(a.Summary)), " ")
 	var summaryLines []string
-	if summaryFull != "" {
+	if summaryFull != "" && !sameText(summaryFull, a.Title) {
 		wrapped := strings.Split(wordWrap(summaryFull, inner), "\n")
 		for i := 0; i < len(wrapped) && i < summaryLinesPerCard; i++ {
 			summaryLines = append(summaryLines, truncate(wrapped[i], inner))
@@ -150,8 +160,12 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 		}
 	}
 	contentLines := []string{indicator + title, "  " + meta}
-	for _, line := range summaryLines {
-		contentLines = append(contentLines, "  "+styleSummary.Inline(true).MaxWidth(inner).Render(line))
+	for i := 0; i < summaryLinesPerCard; i++ {
+		line := ""
+		if i < len(summaryLines) {
+			line = styleSummary.Inline(true).MaxWidth(inner).Render(summaryLines[i])
+		}
+		contentLines = append(contentLines, "  "+line)
 	}
 	content := strings.Join(contentLines, "\n")
 
@@ -166,6 +180,13 @@ func (m *Model) renderCard(idx int, a db.Article, width int) string {
 	}
 	rendered := s.Render(content)
 	return rendered
+}
+
+func sameText(a, b string) bool {
+	return strings.EqualFold(
+		strings.Join(strings.Fields(a), " "),
+		strings.Join(strings.Fields(b), " "),
+	)
 }
 
 func (m *Model) renderFeedList() string {

@@ -38,6 +38,7 @@ func buildSummaryHTML(summaryText string, articles []db.Article) string {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--fg); font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace; font-size: 14px; line-height: 1.6; padding: 2rem; max-width: 860px; margin: 0 auto; }
   h1 { color: var(--accent); font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .scope { color: var(--fg); font-size: 0.95rem; margin-bottom: 0.2rem; }
   .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
   h2 { color: var(--accent); font-size: 1rem; margin: 2rem 0 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
   h3 { color: var(--fg); font-size: 0.95rem; margin: 1.5rem 0 0.5rem; }
@@ -56,6 +57,7 @@ func buildSummaryHTML(summaryText string, articles []db.Article) string {
 `)
 
 	b.WriteString(fmt.Sprintf("<h1>tailfeed - 今日の要約</h1>\n"))
+	b.WriteString(fmt.Sprintf(`<div class="scope">最新 %d 件の要約</div>`+"\n", len(articles)))
 	b.WriteString(fmt.Sprintf(`<div class="meta">%s · %d 件</div>`+"\n",
 		time.Now().Format("2006-01-02 Mon"), len(articles)))
 

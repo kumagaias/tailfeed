@@ -28,17 +28,17 @@ var (
 				Padding(0, 1)
 
 	styleCardSelected = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
+				Border(lipgloss.ThickBorder(), false, false, false, true).
 				BorderForeground(lipgloss.Color("12")).
 				Padding(0, 1)
 
 	styleCardNormal = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.NormalBorder(), false, false, false, true).
 			BorderForeground(lipgloss.Color("238")).
 			Padding(0, 1)
 
 	styleCardRead = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.NormalBorder(), false, false, false, true).
 			BorderForeground(lipgloss.Color("238")).
 			Foreground(lipgloss.Color("8")).
 			Padding(0, 1)
