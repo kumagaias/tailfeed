@@ -3,8 +3,11 @@ package feed
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	gofeed "github.com/mmcdole/gofeed"
 
 	"github.com/kumagaias/tailfeed/internal/db"
 	_ "modernc.org/sqlite"
@@ -74,6 +77,34 @@ func TestIsDue(t *testing.T) {
 	}
 	if !p.isDue(feedNeverFetched, time.Now()) {
 		t.Error("feed never fetched should always be due")
+	}
+}
+
+func TestArticleFromItemAddsImageToSummary(t *testing.T) {
+	item := &gofeed.Item{
+		GUID:        "x",
+		Title:       "T",
+		Link:        "https://example.com/post",
+		Description: "body",
+		Image:       &gofeed.Image{URL: "https://example.com/image.jpg"},
+	}
+	a := articleFromItem(1, item)
+	if !strings.Contains(a.Summary, `<img src="https://example.com/image.jpg">`) {
+		t.Fatalf("summary does not include item image: %q", a.Summary)
+	}
+}
+
+func TestArticleFromItemAddsImageEnclosureToSummary(t *testing.T) {
+	item := &gofeed.Item{
+		GUID:        "x",
+		Title:       "T",
+		Link:        "https://example.com/post",
+		Description: "body",
+		Enclosures:  []*gofeed.Enclosure{{URL: "https://example.com/image.png", Type: "image/png"}},
+	}
+	a := articleFromItem(1, item)
+	if !strings.Contains(a.Summary, `<img src="https://example.com/image.png">`) {
+		t.Fatalf("summary does not include enclosure image: %q", a.Summary)
 	}
 }
 

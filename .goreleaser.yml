@@ -41,14 +41,17 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/kumagaias/tailfeed"
-    description: "A tail-style terminal RSS reader"
+    description: "A tail-style RSS reader with browser and terminal interfaces"
     license: "MIT"
     caveats: |
       Get started by adding sample feeds (Hacker News, GitHub Blog, and more):
         tailfeed add sample
 
-      Then open the TUI:
+      Then open the browser UI:
         tailfeed
+
+      Or open the terminal UI:
+        tailfeed -t
     test: |
       system "#{bin}/tailfeed", "--version"
     install: |

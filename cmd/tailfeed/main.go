@@ -28,22 +28,29 @@ func main() {
 func rootCmd() *cobra.Command {
 	var follow bool
 	var groupName string
+	var terminal bool
+	var addr string
 
 	root := &cobra.Command{
 		Use:     "tailfeed",
-		Short:   "A tail-style terminal RSS reader",
-		Long:    "tailfeed " + version + " — A tail-style terminal RSS reader",
+		Short:   "A tail-style RSS reader",
+		Long:    "tailfeed " + version + " — A tail-style RSS reader",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if follow {
 				return runFollow(groupName)
 			}
-			return runTUI()
+			if terminal {
+				return runTUI()
+			}
+			return runWeb(addr)
 		},
 	}
 	root.Flags().BoolVarP(&follow, "follow", "f", false, "stream new articles to stdout (tail -f style)")
 	root.Flags().StringVarP(&groupName, "group", "g", "", "filter by group name (use with -f)")
-	root.AddCommand(addCmd(), removeCmd(), listCmd(), mcpCmd(), summaryCmd(), registerCmd(), clearCmd(), usageCmd())
+	root.Flags().BoolVarP(&terminal, "terminal", "t", false, "open terminal UI instead of browser UI")
+	root.Flags().StringVar(&addr, "addr", "127.0.0.1:8080", "listen address for browser UI")
+	root.AddCommand(addCmd(), removeCmd(), listCmd(), webCmd(), mcpCmd(), summaryCmd(), registerCmd(), clearCmd(), usageCmd())
 	return root
 }
 

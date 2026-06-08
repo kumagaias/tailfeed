@@ -19,7 +19,9 @@ brew install kumagaias/tap/tailfeed
 ## Usage
 
 ```bash
-tailfeed                  # open TUI
+tailfeed                  # open local browser UI at http://127.0.0.1:8080
+tailfeed -t               # open TUI
+tailfeed web              # open local browser UI explicitly
 tailfeed -f               # stream new articles
 tailfeed summary today    # AI summary of the last 24h → HTML report
 tailfeed summary language Japanese
@@ -41,6 +43,10 @@ tailfeed list             # list feeds
 | `o` / `enter` | open in browser |
 | `/` | command palette |
 | `q` | quit |
+
+The browser UI supports `j`/`k` to move, `gg`/`G` for oldest/newest,
+`h`/`l` to hide/show detail, `o`/`enter` to open, `space` to stock,
+and `/` to focus search.
 
 ## Commands (`/`)
 

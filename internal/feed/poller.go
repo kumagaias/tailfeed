@@ -3,6 +3,7 @@ package feed
 
 import (
 	"context"
+	"html"
 	"log/slog"
 	"strings"
 	"sync"
@@ -147,12 +148,16 @@ func (p *Poller) fetchFeed(ctx context.Context, f db.Feed) {
 }
 
 func articleFromItem(feedID int64, item *gofeed.Item) *db.Article {
+	summary := item.Description
+	if img := imageURLFromItem(item); img != "" && !strings.Contains(strings.ToLower(summary), "<img") {
+		summary = `<img src="` + html.EscapeString(img) + `">` + summary
+	}
 	a := &db.Article{
 		FeedID:  feedID,
 		GUID:    item.GUID,
 		Title:   item.Title,
 		Link:    item.Link,
-		Summary: item.Description,
+		Summary: summary,
 	}
 	if a.GUID == "" {
 		a.GUID = item.Link
@@ -165,4 +170,19 @@ func articleFromItem(feedID int64, item *gofeed.Item) *db.Article {
 		a.PublishedAt = &t
 	}
 	return a
+}
+
+func imageURLFromItem(item *gofeed.Item) string {
+	if item.Image != nil && item.Image.URL != "" {
+		return item.Image.URL
+	}
+	for _, enclosure := range item.Enclosures {
+		if enclosure == nil {
+			continue
+		}
+		if enclosure.URL != "" && strings.HasPrefix(strings.ToLower(enclosure.Type), "image/") {
+			return enclosure.URL
+		}
+	}
+	return ""
 }
