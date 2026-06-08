@@ -391,17 +391,53 @@ const indexHTML = `<!doctype html>
 <title>tailfeed</title>
 <style>
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   --bg: #f6f7f9;
   --panel: #ffffff;
+  --detail-bg: #fbfcfd;
+  --input-bg: #fbfcfd;
   --text: #15171a;
+  --title: #111418;
+  --summary: #424951;
   --muted: #69707a;
   --line: #d9dee5;
   --accent: #0f766e;
   --accent-strong: #0b5f59;
   --read: #7c8591;
   --stock: #c0264e;
+  --sidebar-bg: #111418;
+  --sidebar-line: #0b0d10;
+  --sidebar-text: #f7f8fa;
+  --sidebar-muted: #c6ccd4;
+  --sidebar-hover: #1c2229;
+  --thumb-bg: #eef1f4;
+  --thumb-placeholder: #e7ebf0;
   --shadow: 0 1px 2px rgba(18, 24, 31, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --panel: #191d22;
+    --detail-bg: #15191e;
+    --input-bg: #111418;
+    --text: #edf0f3;
+    --title: #f7f8fa;
+    --summary: #d7dce2;
+    --muted: #a2abb6;
+    --line: #303842;
+    --accent: #2f8f85;
+    --accent-strong: #48aaa0;
+    --read: #89939f;
+    --stock: #f06282;
+    --sidebar-bg: #0d1014;
+    --sidebar-line: #242a31;
+    --sidebar-text: #f7f8fa;
+    --sidebar-muted: #b4bdc8;
+    --sidebar-hover: #20262d;
+    --thumb-bg: #242a31;
+    --thumb-placeholder: #20262d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35);
+  }
 }
 * { box-sizing: border-box; }
 body {
@@ -422,10 +458,10 @@ button, input { font: inherit; }
 .sidebar {
   height: 100vh;
   overflow-y: auto;
-  background: #111418;
-  color: #f7f8fa;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
   padding: 18px 12px;
-  border-right: 1px solid #0b0d10;
+  border-right: 1px solid var(--sidebar-line);
 }
 .brand {
   display: flex;
@@ -454,7 +490,7 @@ button, input { font: inherit; }
   width: 100%;
   border: 0;
   background: transparent;
-  color: #c6ccd4;
+  color: var(--sidebar-muted);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -464,7 +500,7 @@ button, input { font: inherit; }
   border-radius: 6px;
   cursor: pointer;
 }
-.group:hover { background: #1c2229; color: white; }
+.group:hover { background: var(--sidebar-hover); color: white; }
 .group.active { background: var(--accent); color: white; }
 .group-name {
   overflow: hidden;
@@ -516,12 +552,12 @@ button, input { font: inherit; }
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 9px 11px;
-  background: #fbfcfd;
+  background: var(--input-bg);
   color: var(--text);
 }
 .content {
   display: grid;
-  grid-template-columns: minmax(360px, 44%) minmax(0, 1fr);
+  grid-template-columns: minmax(420px, 63%) minmax(320px, 37%);
   min-height: 0;
   overflow: hidden;
 }
@@ -545,22 +581,39 @@ button, input { font: inherit; }
   margin: 0 0 10px;
   cursor: pointer;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
   gap: 10px;
-}
-.article.has-image {
-  grid-template-columns: 96px minmax(0, 1fr);
 }
 .article:hover { border-color: #b7c0ca; }
 .article.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(15, 118, 110, .14); }
-.article.read .article-title { color: var(--read); font-weight: 500; }
-.article-thumb {
-  width: 96px;
-  height: 72px;
-  object-fit: cover;
+.article.read .article-title { color: var(--read); font-weight: 700; }
+.article-media {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 54px;
+  align-self: start;
   border-radius: 6px;
   border: 1px solid var(--line);
-  background: #eef1f4;
+  background: var(--thumb-placeholder);
+  overflow: hidden;
+}
+.article-thumb,
+.article-placeholder {
+  width: 100%;
+  height: 100%;
+}
+.article-thumb {
+  object-fit: cover;
+  background: var(--thumb-bg);
+}
+.article-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 .article-top {
   display: flex;
@@ -569,16 +622,27 @@ button, input { font: inherit; }
   min-width: 0;
 }
 .stock {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   color: #aab2bd;
   flex: 0 0 auto;
+  border-radius: 999px;
+}
+.stock:hover {
+  background: color-mix(in srgb, var(--stock) 12%, transparent);
+  color: var(--stock);
 }
 .stock.on { color: var(--stock); }
 .article-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 700;
-  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 800;
+  color: var(--title);
 }
 .article-meta {
   margin-top: 5px;
@@ -590,7 +654,7 @@ button, input { font: inherit; }
 }
 .article-summary {
   margin-top: 8px;
-  color: #424951;
+  color: var(--summary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -601,7 +665,7 @@ button, input { font: inherit; }
   min-height: 0;
   overflow: auto;
   padding: 28px 34px;
-  background: #fbfcfd;
+  background: var(--detail-bg);
 }
 .detail-close {
   position: sticky;
@@ -618,18 +682,18 @@ button, input { font: inherit; }
 }
 .detail-meta { color: var(--muted); margin-bottom: 22px; }
 .detail-image {
-  display: block;
+  display: none;
   width: min(100%, 380px);
   max-height: 190px;
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--line);
   margin-bottom: 22px;
-  background: #eef1f4;
+  background: var(--thumb-bg);
 }
 .detail-summary {
   white-space: pre-wrap;
-  color: #252a30;
+  color: var(--summary);
   font-size: 15px;
   max-width: 76ch;
 }
@@ -687,8 +751,8 @@ button, input { font: inherit; }
   .content { grid-template-columns: 1fr; }
   .list { max-height: 60vh; border-right: 0; }
   .detail { border-top: 1px solid var(--line); }
-  .article.has-image { grid-template-columns: 82px minmax(0, 1fr); }
-  .article-thumb { width: 82px; height: 62px; }
+  .article { grid-template-columns: 58px minmax(0, 1fr); }
+  .article-media { width: 58px; height: 44px; }
 }
 </style>
 </head>
@@ -717,7 +781,7 @@ button, input { font: inherit; }
 const pageSize = 50;
 const state = {
   group: "all", query: "", articles: [], selected: null,
-  hasMore: false, loading: false, pendingG: false, detailOpen: true,
+  groups: [], hasMore: false, loading: false, pendingG: false, detailOpen: true,
   suppressScrollLoad: false
 };
 const contentEl = document.getElementById("content");
@@ -765,7 +829,8 @@ async function load(options = {}) {
     if (!state.articles.some(a => a.id === state.selected)) {
       state.selected = state.articles.length ? state.articles[state.articles.length - 1].id : null;
     }
-    renderGroups(data.groups || []);
+    state.groups = data.groups || [];
+    renderGroups();
     renderList();
     renderDetail();
     if (older) {
@@ -779,15 +844,15 @@ async function load(options = {}) {
   }
 }
 
-function renderGroups(groups) {
-  groupsEl.innerHTML = groups.map(g => {
+function renderGroups() {
+  groupsEl.innerHTML = state.groups.map(g => {
     const icon = g.id === "stock" ? "♥ " : "";
     return '<button class="group ' + (g.id === state.group ? "active" : "") + '" data-group="' + escapeHTML(g.id) + '">' +
       '<span class="group-name">' + icon + escapeHTML(g.name) + '</span>' +
       '<span class="group-count">' + g.count + '</span>' +
     '</button>';
   }).join("");
-  const active = groups.find(g => g.id === state.group) || groups[0];
+  const active = state.groups.find(g => g.id === state.group) || state.groups[0];
   currentGroupEl.textContent = active ? active.name : "All";
   articleCountEl.textContent = state.articles.length + (state.hasMore ? "+ articles" : " articles");
 }
@@ -806,11 +871,11 @@ function renderList() {
       )
     : "";
   listEl.innerHTML = loader + state.articles.map(a =>
-    '<button class="article ' + (a.imageUrl ? "has-image " : "") + (a.id === state.selected ? "active" : "") + ' ' + (a.isRead ? "read" : "") + '" data-id="' + a.id + '">' +
-      (a.imageUrl ? '<img class="article-thumb" src="' + escapeHTML(a.imageUrl) + '" alt="" loading="lazy">' : "") +
+    '<button class="article ' + (a.id === state.selected ? "active" : "") + ' ' + (a.isRead ? "read" : "") + '" data-id="' + a.id + '">' +
+      '<div class="article-media">' + articleMedia(a) + '</div>' +
       '<div class="article-body">' +
       '<div class="article-top">' +
-        '<span class="stock ' + (a.isStocked ? "on" : "") + '">♥</span>' +
+        '<span class="stock ' + (a.isStocked ? "on" : "") + '" data-stock-id="' + a.id + '" role="button" tabindex="-1" aria-label="' + (a.isStocked ? "Unstock" : "Stock") + '">♥</span>' +
         '<span class="article-title">' + escapeHTML(a.title) + '</span>' +
       '</div>' +
       '<div class="article-meta">' + escapeHTML(a.feedTitle) + ' · ' + escapeHTML(a.age) + '</div>' +
@@ -818,6 +883,18 @@ function renderList() {
       '</div>' +
     '</button>'
   ).join("");
+}
+
+function articleMedia(a) {
+  if (a.imageUrl) {
+    return '<img class="article-thumb" src="' + escapeHTML(a.imageUrl) + '" alt="" loading="lazy">';
+  }
+  return '<span class="article-placeholder" aria-hidden="true">' + escapeHTML(feedInitial(a.feedTitle || a.title)) + '</span>';
+}
+
+function feedInitial(value) {
+  const trimmed = String(value || "tf").trim();
+  return (Array.from(trimmed)[0] || "t").toUpperCase();
 }
 
 function renderDetail() {
@@ -835,7 +912,6 @@ function renderDetail() {
     '<button class="action detail-close" data-close-detail type="button" aria-label="Close detail">Close</button>' +
     '<h2>' + escapeHTML(a.title) + '</h2>' +
     '<div class="detail-meta">' + escapeHTML(a.feedTitle) + ' · ' + escapeHTML(a.age) + '</div>' +
-    (a.imageUrl ? '<img class="detail-image" src="' + escapeHTML(a.imageUrl) + '" alt="">' : "") +
     '<div class="detail-summary">' + escapeHTML(a.summary || "") + '</div>' +
     '<div class="actions">' +
       (a.link ? '<a class="action primary" href="' + escapeHTML(a.link) + '" target="_blank" rel="noreferrer">Open</a>' : "") +
@@ -854,6 +930,14 @@ groupsEl.addEventListener("click", event => {
 });
 
 listEl.addEventListener("click", event => {
+  const stock = event.target.closest("[data-stock-id]");
+  if (stock) {
+    event.preventDefault();
+    event.stopPropagation();
+    const a = state.articles.find(item => item.id === Number(stock.dataset.stockId));
+    if (a) toggleArticleStock(a).catch(showError);
+    return;
+  }
   const button = event.target.closest("[data-id]");
   if (!button) return;
   state.selected = Number(button.dataset.id);
@@ -877,10 +961,7 @@ detailEl.addEventListener("click", async event => {
   if (event.target.id !== "stockButton") return;
   const a = state.articles.find(item => item.id === state.selected);
   if (!a) return;
-  await fetch("/api/articles/" + a.id + "/stock", { method: "POST" });
-  a.isStocked = !a.isStocked;
-  renderList();
-  renderDetail();
+  await toggleArticleStock(a);
 });
 
 detailToggleEl.addEventListener("click", () => {
@@ -908,14 +989,27 @@ function selectIndex(index) {
   state.selected = state.articles[next].id;
   renderList();
   renderDetail();
+  centerSelectedArticle(next);
+}
+
+function centerSelectedArticle(index) {
   const selected = listEl.querySelector('[data-id="' + state.selected + '"]');
-  if (selected) {
-    state.suppressScrollLoad = true;
-    selected.scrollIntoView({ block: "nearest" });
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => { state.suppressScrollLoad = false; });
-    });
+  if (!selected) return;
+  state.suppressScrollLoad = true;
+  const selectedTop = selected.offsetTop;
+  const selectedMiddle = selectedTop + selected.offsetHeight / 2;
+  const targetTop = selectedMiddle - listEl.clientHeight / 2;
+  const maxTop = listEl.scrollHeight - listEl.clientHeight;
+  if (index <= 0) {
+    listEl.scrollTop = 0;
+  } else if (index >= state.articles.length - 1) {
+    listEl.scrollTop = maxTop;
+  } else {
+    listEl.scrollTop = Math.max(0, Math.min(targetTop, maxTop));
   }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { state.suppressScrollLoad = false; });
+  });
 }
 
 function setDetailOpen(open) {
@@ -931,10 +1025,30 @@ function openSelected() {
 async function toggleSelectedStock() {
   const a = state.articles.find(item => item.id === state.selected);
   if (!a) return;
-  await fetch("/api/articles/" + a.id + "/stock", { method: "POST" });
+  await toggleArticleStock(a);
+}
+
+async function toggleArticleStock(a) {
+  const res = await fetch("/api/articles/" + a.id + "/stock", { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  const wasStocked = a.isStocked;
   a.isStocked = !a.isStocked;
+  updateStockCount(wasStocked ? -1 : 1);
+  if (state.group === "stock" && !a.isStocked) {
+    state.articles = state.articles.filter(item => item.id !== a.id);
+    if (state.selected === a.id) {
+      state.selected = state.articles.length ? state.articles[state.articles.length - 1].id : null;
+    }
+  }
   renderList();
   renderDetail();
+}
+
+function updateStockCount(delta) {
+  const group = state.groups.find(g => g.id === "stock");
+  if (!group) return;
+  group.count = Math.max(0, Number(group.count || 0) + delta);
+  renderGroups();
 }
 
 document.addEventListener("keydown", event => {
@@ -948,10 +1062,14 @@ document.addEventListener("keydown", event => {
   }
   if (event.key !== "g") state.pendingG = false;
   switch (event.key) {
+  case "ArrowDown":
   case "j":
+    event.preventDefault();
     selectIndex(selectedIndex() + 1);
     break;
+  case "ArrowUp":
   case "k":
+    event.preventDefault();
     selectIndex(selectedIndex() - 1);
     break;
   case "g":
