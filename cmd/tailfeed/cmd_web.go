@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -39,6 +40,11 @@ func runWeb(addr string) error {
 	poller := feed.New(database)
 	go poller.Start(ctx)
 
-	fmt.Fprintf(os.Stderr, "tailfeed web: %s\n", web.LocalURL(addr))
+	url := web.LocalURL(addr)
+	fmt.Fprintf(os.Stderr, "tailfeed web: %s\n", url)
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		openBrowserCLI(url)
+	}()
 	return web.New(database).ListenAndServe(ctx, addr)
 }

@@ -611,8 +611,8 @@ button, input { font: inherit; }
 .detail-meta { color: var(--muted); margin-bottom: 22px; }
 .detail-image {
   display: block;
-  width: min(100%, 760px);
-  max-height: 380px;
+  width: min(100%, 380px);
+  max-height: 190px;
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--line);
