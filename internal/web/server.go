@@ -35,19 +35,27 @@ func New(database *db.DB) *Server {
 
 // ListenAndServe starts the browser UI on addr.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	return s.Serve(ctx, listener)
+}
+
+// Serve starts the browser UI on listener.
+func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/state", s.handleState)
 	mux.HandleFunc("/api/articles/", s.handleArticleAction)
 
 	server := &http.Server{
-		Addr:              addr,
 		Handler:           logRequest(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- server.ListenAndServe()
+		errCh <- server.Serve(listener)
 	}()
 	go func() {
 		<-ctx.Done()
