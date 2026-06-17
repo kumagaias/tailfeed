@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kumagaias/tailfeed/internal/db"
 	_ "modernc.org/sqlite"
@@ -305,20 +306,52 @@ func TestArticleListFilterByGroup(t *testing.T) {
 	}
 }
 
-func TestArticleOrderedOldestFirst(t *testing.T) {
+func TestArticleListIncludesOlderHistory(t *testing.T) {
+	d := openTestDB(t)
+	g, _ := d.CreateGroup("archive")
+	f, _ := d.AddFeed("https://example.com/rss", &g.ID)
+	published := time.Now().AddDate(0, 0, -45)
+
+	_, _ = d.SaveArticle(&db.Article{
+		FeedID:      f.ID,
+		GUID:        "old",
+		Title:       "Older than thirty days",
+		PublishedAt: &published,
+	})
+
+	all, err := d.ListArticles(nil, 50, 0)
+	if err != nil {
+		t.Fatalf("ListArticles: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("expected old article in all articles, got %d", len(all))
+	}
+
+	inGroup, err := d.ListArticles(&g.ID, 50, 0)
+	if err != nil {
+		t.Fatalf("ListArticles group: %v", err)
+	}
+	if len(inGroup) != 1 || inGroup[0].Title != "Older than thirty days" {
+		t.Fatalf("expected old grouped article, got %#v", inGroup)
+	}
+}
+
+func TestArticleOrderedNewestFirst(t *testing.T) {
 	d := openTestDB(t)
 	f, _ := d.AddFeed("https://example.com/rss", nil)
 
 	for i := range 5 {
+		published := time.Date(2026, 1, i+1, 0, 0, 0, 0, time.UTC)
 		_, _ = d.SaveArticle(&db.Article{
-			FeedID: f.ID,
-			GUID:   "g" + itoa(i),
-			Title:  "Article " + itoa(i),
+			FeedID:      f.ID,
+			GUID:        "g" + itoa(i),
+			Title:       "Article " + itoa(i),
+			PublishedAt: &published,
 		})
 	}
 	articles, _ := d.ListArticles(nil, 50, 0)
 	for i, a := range articles {
-		expected := "Article " + itoa(i)
+		expected := "Article " + itoa(4-i)
 		if a.Title != expected {
 			t.Errorf("position %d: expected %q, got %q", i, expected, a.Title)
 		}

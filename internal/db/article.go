@@ -82,17 +82,16 @@ const articleSelectDescQ = `
 	ORDER BY COALESCE(a.published_at, a.created_at) DESC
 	LIMIT ?`
 
-// ListArticles returns articles from the last 30 days, ordered oldest-first.
+// ListArticles returns articles ordered newest-first.
 func (d *DB) ListArticles(groupID *int64, limit, offset int) ([]Article, error) {
-	since := time.Now().AddDate(0, 0, -30).UTC()
 	var (
 		rows *sql.Rows
 		err  error
 	)
 	if groupID == nil {
-		rows, err = d.Query(fmt.Sprintf(articleSelectQ, "WHERE COALESCE(a.published_at, a.created_at) >= ?"), since, limit, offset)
+		rows, err = d.Query(fmt.Sprintf(articleSelectQ, ""), limit, offset)
 	} else {
-		rows, err = d.Query(fmt.Sprintf(articleSelectQ, "WHERE f.group_id = ? AND COALESCE(a.published_at, a.created_at) >= ?"), *groupID, since, limit, offset)
+		rows, err = d.Query(fmt.Sprintf(articleSelectQ, "WHERE f.group_id = ?"), *groupID, limit, offset)
 	}
 	if err != nil {
 		return nil, err

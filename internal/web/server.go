@@ -567,6 +567,8 @@ button, input { font: inherit; }
 .list {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border-right: 1px solid var(--line);
   padding: 14px;
 }
@@ -730,6 +732,15 @@ button, input { font: inherit; }
   font-size: 12px;
 }
 .loading.compact { padding: 4px 0 14px; }
+.load-more {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.load-more:hover { border-color: var(--accent); color: var(--accent-strong); }
 .loading-spinner {
   width: 14px;
   height: 14px;
@@ -749,7 +760,7 @@ button, input { font: inherit; }
   .toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
   .search { grid-column: 1 / -1; }
   .content { grid-template-columns: 1fr; }
-  .list { max-height: 60vh; border-right: 0; }
+  .list { height: 60vh; max-height: 60vh; border-right: 0; }
   .detail { border-top: 1px solid var(--line); }
   .article { grid-template-columns: 58px minmax(0, 1fr); }
   .article-media { width: 58px; height: 44px; }
@@ -865,10 +876,11 @@ function renderList() {
     return;
   }
   const loader = state.hasMore
-    ? loadingView(
-        state.loading ? "Loading older articles..." : "Scroll up to load more",
-        { compact: true, active: state.loading }
-      )
+    ? '<div class="loading compact" role="status">' +
+        (state.loading
+          ? '<span class="loading-spinner" aria-hidden="true"></span><span>Loading older articles...</span>'
+          : '<button class="load-more" data-load-older type="button">Load older articles</button>') +
+      '</div>'
     : "";
   listEl.innerHTML = loader + state.articles.map(a =>
     '<button class="article ' + (a.id === state.selected ? "active" : "") + ' ' + (a.isRead ? "read" : "") + '" data-id="' + a.id + '">' +
@@ -930,6 +942,11 @@ groupsEl.addEventListener("click", event => {
 });
 
 listEl.addEventListener("click", event => {
+  const loadOlder = event.target.closest("[data-load-older]");
+  if (loadOlder) {
+    load({ older: true }).catch(showError);
+    return;
+  }
   const stock = event.target.closest("[data-stock-id]");
   if (stock) {
     event.preventDefault();
