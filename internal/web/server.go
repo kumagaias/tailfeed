@@ -25,12 +25,17 @@ const (
 
 // Server exposes a local browser UI for tailfeed.
 type Server struct {
-	db *db.DB
+	db       *db.DB
+	pollFeed func(db.Feed)
 }
 
 // New creates a browser UI server.
-func New(database *db.DB) *Server {
-	return &Server{db: database}
+func New(database *db.DB, pollFeed ...func(db.Feed)) *Server {
+	server := &Server{db: database}
+	if len(pollFeed) > 0 {
+		server.pollFeed = pollFeed[0]
+	}
+	return server
 }
 
 // ListenAndServe starts the browser UI on addr.
@@ -48,6 +53,10 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/state", s.handleState)
 	mux.HandleFunc("/api/articles/", s.handleArticleAction)
+	mux.HandleFunc("/api/feeds", s.handleFeeds)
+	mux.HandleFunc("/api/feeds/", s.handleFeed)
+	mux.HandleFunc("/api/catalog/genres", s.handleCatalogGenres)
+	mux.HandleFunc("/api/catalog/feeds", s.handleCatalogFeeds)
 
 	server := &http.Server{
 		Handler:           logRequest(mux),
@@ -486,6 +495,48 @@ button, input { font: inherit; }
   flex-direction: column;
   gap: 4px;
 }
+.feed-manager {
+  margin-top: 18px;
+  padding: 14px 8px 0;
+  border-top: 1px solid var(--sidebar-line);
+}
+.feed-manager summary { color: var(--sidebar-muted); cursor: pointer; font-weight: 700; }
+.feed-form { display: flex; gap: 6px; margin-top: 10px; }
+.feed-form input {
+  min-width: 0;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid #343b44;
+  border-radius: 6px;
+  background: #171b20;
+  color: var(--sidebar-text);
+}
+.feed-form button, .feed-remove {
+  border: 1px solid #343b44;
+  border-radius: 6px;
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
+  cursor: pointer;
+}
+.feed-form button { padding: 6px 9px; }
+.feed-list { margin-top: 10px; display: grid; gap: 6px; }
+.feed-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.feed-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sidebar-muted); font-size: 12px; }
+.feed-remove { padding: 2px 6px; color: #f7a7b9; }
+.catalog-controls { display: grid; grid-template-columns: 1fr 72px; gap: 6px; margin-top: 12px; }
+.catalog-controls select {
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid #343b44;
+  border-radius: 6px;
+  background: #171b20;
+  color: var(--sidebar-text);
+}
+.catalog-results { display: grid; gap: 7px; margin-top: 10px; max-height: 260px; overflow: auto; }
+.catalog-feed { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; color: var(--sidebar-muted); font-size: 12px; }
+.catalog-feed input { margin-top: 3px; }
+.catalog-feed small { display: block; color: #8893a0; }
+.catalog-add { width: 100%; margin-top: 10px; padding: 7px; }
 .group {
   width: 100%;
   border: 0;
@@ -583,7 +634,7 @@ button, input { font: inherit; }
   margin: 0 0 10px;
   cursor: pointer;
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 72px;
   gap: 10px;
 }
 .article:hover { border-color: #b7c0ca; }
@@ -658,7 +709,7 @@ button, input { font: inherit; }
   margin-top: 8px;
   color: var(--summary);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -762,7 +813,7 @@ button, input { font: inherit; }
   .content { grid-template-columns: 1fr; }
   .list { height: 60vh; max-height: 60vh; border-right: 0; }
   .detail { border-top: 1px solid var(--line); }
-  .article { grid-template-columns: 58px minmax(0, 1fr); }
+  .article { grid-template-columns: minmax(0, 1fr) 58px; }
   .article-media { width: 58px; height: 44px; }
 }
 </style>
@@ -772,6 +823,20 @@ button, input { font: inherit; }
   <aside class="sidebar">
     <div class="brand"><span class="brand-mark">tf</span><span>tailfeed</span></div>
     <nav id="groups" class="groups"></nav>
+    <details class="feed-manager">
+      <summary>Manage feeds</summary>
+      <form id="feedForm" class="feed-form">
+        <input id="feedURL" type="url" required placeholder="https://…" aria-label="Feed URL">
+        <button type="submit">Add</button>
+      </form>
+      <div class="catalog-controls">
+        <select id="catalogGenre" aria-label="Feed genre"><option value="">Browse catalog…</option></select>
+        <select id="catalogLanguage" aria-label="Feed language"><option value="">All</option><option value="ja">日本語</option><option value="en">English</option></select>
+      </div>
+      <div id="catalogResults" class="catalog-results"></div>
+      <button id="catalogAdd" class="feed-form catalog-add" type="button" hidden>Add selected</button>
+      <div id="feedList" class="feed-list"></div>
+    </details>
   </aside>
   <main class="main">
     <header class="toolbar">
@@ -803,6 +868,15 @@ const detailToggleEl = document.getElementById("detailToggle");
 const searchEl = document.getElementById("search");
 const currentGroupEl = document.getElementById("currentGroup");
 const articleCountEl = document.getElementById("articleCount");
+const feedFormEl = document.getElementById("feedForm");
+const feedURLEl = document.getElementById("feedURL");
+const feedListEl = document.getElementById("feedList");
+const catalogGenreEl = document.getElementById("catalogGenre");
+const catalogLanguageEl = document.getElementById("catalogLanguage");
+const catalogResultsEl = document.getElementById("catalogResults");
+const catalogAddEl = document.getElementById("catalogAdd");
+let localFeeds = [];
+let catalogFeeds = [];
 
 function escapeHTML(value) {
   return String(value || "").replace(/[&<>"']/g, ch => ({
@@ -868,6 +942,106 @@ function renderGroups() {
   articleCountEl.textContent = state.articles.length + (state.hasMore ? "+ articles" : " articles");
 }
 
+async function loadFeeds() {
+  const res = await fetch("/api/feeds");
+  if (!res.ok) throw new Error(await res.text());
+  const feeds = await res.json();
+  localFeeds = feeds;
+  feedListEl.innerHTML = feeds.map(f =>
+    '<div class="feed-row">' +
+      '<span class="feed-label" title="' + escapeHTML(f.url) + '">' + escapeHTML(f.title || f.url) + '</span>' +
+      '<button class="feed-remove" type="button" data-remove-feed="' + f.id + '" data-feed-label="' + escapeHTML(f.title || f.url) + '" aria-label="Remove feed">×</button>' +
+    '</div>'
+  ).join("");
+}
+
+async function loadCatalogGenres() {
+  const res = await fetch("/api/catalog/genres");
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  catalogGenreEl.innerHTML = '<option value="">Browse catalog…</option>' +
+    (data.genres || []).map(g => '<option value="' + escapeHTML(g.slug) + '">' +
+      escapeHTML(g.labelJa || g.label_ja || g.label) + '</option>').join("");
+}
+
+async function loadCatalogFeeds() {
+  if (!catalogGenreEl.value) {
+    catalogFeeds = [];
+    renderCatalogFeeds();
+    return;
+  }
+  const params = new URLSearchParams({ genre: catalogGenreEl.value });
+  if (catalogLanguageEl.value) params.set("language", catalogLanguageEl.value);
+  const res = await fetch("/api/catalog/feeds?" + params.toString());
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  catalogFeeds = data.feeds || [];
+  renderCatalogFeeds();
+}
+
+function renderCatalogFeeds() {
+  const registered = new Set(localFeeds.map(f => f.url));
+  catalogResultsEl.innerHTML = catalogFeeds.map((f, index) => {
+    const exists = registered.has(f.url);
+    return '<label class="catalog-feed">' +
+      '<input type="checkbox" data-catalog-index="' + index + '" ' + (exists ? "checked disabled" : "") + '>' +
+      '<span>' + escapeHTML(f.title) + '<small>' + escapeHTML(exists ? "Already added" : (f.description || f.url)) + '</small></span>' +
+    '</label>';
+  }).join("");
+  catalogAddEl.hidden = !catalogFeeds.some(f => !registered.has(f.url));
+}
+
+catalogGenreEl.addEventListener("change", () => loadCatalogFeeds().catch(showError));
+catalogLanguageEl.addEventListener("change", () => loadCatalogFeeds().catch(showError));
+catalogAddEl.addEventListener("click", async () => {
+  const selected = Array.from(catalogResultsEl.querySelectorAll("[data-catalog-index]:checked:not(:disabled)"))
+    .map(input => catalogFeeds[Number(input.dataset.catalogIndex)]);
+  if (!selected.length) return;
+  catalogAddEl.disabled = true;
+  try {
+    for (const feed of selected) {
+      const res = await fetch("/api/feeds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: feed.url })
+      });
+      if (!res.ok) throw new Error(await res.text());
+    }
+    await loadFeeds();
+    renderCatalogFeeds();
+    await load();
+  } catch (err) { showError(err); }
+  finally { catalogAddEl.disabled = false; }
+});
+
+feedFormEl.addEventListener("submit", async event => {
+  event.preventDefault();
+  try {
+    const res = await fetch("/api/feeds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: feedURLEl.value.trim() })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    feedURLEl.value = "";
+    await loadFeeds();
+    await load();
+  } catch (err) { showError(err); }
+});
+
+feedListEl.addEventListener("click", async event => {
+  const button = event.target.closest("[data-remove-feed]");
+  if (!button) return;
+  if (!window.confirm('Remove "' + button.dataset.feedLabel + '" and its saved articles?')) return;
+  try {
+    const res = await fetch("/api/feeds/" + button.dataset.removeFeed, { method: "DELETE" });
+    if (!res.ok) throw new Error(await res.text());
+    state.selected = null;
+    await loadFeeds();
+    await load();
+  } catch (err) { showError(err); }
+});
+
 function renderList() {
   if (!state.articles.length) {
     listEl.innerHTML = state.loading
@@ -884,7 +1058,6 @@ function renderList() {
     : "";
   listEl.innerHTML = loader + state.articles.map(a =>
     '<button class="article ' + (a.id === state.selected ? "active" : "") + ' ' + (a.isRead ? "read" : "") + '" data-id="' + a.id + '">' +
-      '<div class="article-media">' + articleMedia(a) + '</div>' +
       '<div class="article-body">' +
       '<div class="article-top">' +
         '<span class="stock ' + (a.isStocked ? "on" : "") + '" data-stock-id="' + a.id + '" role="button" tabindex="-1" aria-label="' + (a.isStocked ? "Unstock" : "Stock") + '">♥</span>' +
@@ -893,6 +1066,7 @@ function renderList() {
       '<div class="article-meta">' + escapeHTML(a.feedTitle) + ' · ' + escapeHTML(a.age) + '</div>' +
       (a.summary ? '<div class="article-summary">' + escapeHTML(a.summary) + '</div>' : "") +
       '</div>' +
+      '<div class="article-media">' + articleMedia(a) + '</div>' +
     '</button>'
   ).join("");
 }
@@ -1126,10 +1300,18 @@ document.addEventListener("keydown", event => {
 });
 
 function showError(err) {
-  listEl.innerHTML = '<div class="empty">' + escapeHTML(err.message) + '</div>';
+  const message = err && err.message === "Failed to fetch"
+    ? "Cannot reach tailfeed. Check that the tailfeed process is still running."
+    : (err.message || String(err));
+  window.alert(message);
 }
 
 load().catch(showError);
+loadFeeds().catch(showError);
+loadCatalogGenres().catch(err => {
+  catalogGenreEl.innerHTML = '<option value="">Catalog unavailable</option>';
+  catalogGenreEl.title = err.message || String(err);
+});
 </script>
 </body>
 </html>

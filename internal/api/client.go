@@ -6,10 +6,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
 
-const baseURL = "https://3734qg8c00.execute-api.ap-northeast-1.amazonaws.com"
+var baseURL = apiEndpoint()
+
+func apiEndpoint() string {
+	if endpoint := strings.TrimRight(strings.TrimSpace(os.Getenv("TAILFEED_API_ENDPOINT")), "/"); endpoint != "" {
+		return endpoint
+	}
+	return "https://3734qg8c00.execute-api.ap-northeast-1.amazonaws.com"
+}
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 

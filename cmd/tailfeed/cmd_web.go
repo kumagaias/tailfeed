@@ -55,7 +55,9 @@ func runWeb(addr string) error {
 		time.Sleep(150 * time.Millisecond)
 		openBrowserCLI(url)
 	}()
-	return web.New(database).Serve(ctx, listener)
+	return web.New(database, func(f db.Feed) {
+		poller.PollFeed(ctx, f)
+	}).Serve(ctx, listener)
 }
 
 func listenWeb(addr string) (net.Listener, error) {
