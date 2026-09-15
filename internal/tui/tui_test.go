@@ -406,6 +406,36 @@ func TestWindowResizePreservesCursor(t *testing.T) {
 	assertCursorCardFullyVisible(t, got)
 }
 
+func TestLoadOlderPagePrependsArticlesAndAdvancesOffset(t *testing.T) {
+	m := cursorTestModel(2, 40, 16)
+	m.tabs = []groupTab{{name: "All"}}
+	m.articlesOffset = articlesLimit
+	m.articlesHasMore = true
+	m.cursor = 0
+
+	gotModel, _ := m.Update(loadOlderDoneMsg{
+		tabIdx:   0,
+		offset:   articlesLimit,
+		articles: []db.Article{{Title: "Older article", FeedTitle: "Feed"}},
+		consumed: articlesPageSize,
+		hasMore:  true,
+	})
+	got := gotModel.(*Model)
+
+	if got.articlesOffset != articlesLimit+articlesPageSize {
+		t.Fatalf("articles offset = %d, want %d", got.articlesOffset, articlesLimit+articlesPageSize)
+	}
+	if !got.articlesHasMore {
+		t.Fatal("expected another older page")
+	}
+	if len(got.articles) != 3 || got.articles[0].Title != "Older article" {
+		t.Fatalf("articles after prepend = %#v", got.articles)
+	}
+	if got.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1 to preserve the selected article", got.cursor)
+	}
+}
+
 func cursorTestModel(articleCount, width, height int) *Model {
 	articles := make([]db.Article, articleCount)
 	for i := range articles {

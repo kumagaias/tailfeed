@@ -1,11 +1,7 @@
 package tui
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
-	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -24,11 +20,19 @@ type newArticleMsg db.Article
 // errMsg wraps an error for display.
 type errMsg struct{ err error }
 
-// loadOlderMsg triggers a re-poll of all feeds to fetch older articles.
+// loadOlderMsg triggers loading the next older page from the database.
 type loadOlderMsg struct{}
 
-// loadOlderDoneMsg is sent after re-poll completes.
-type loadOlderDoneMsg struct{ added int }
+// loadOlderDoneMsg is sent after the next older page has been loaded.
+type loadOlderDoneMsg struct {
+	tabIdx     int
+	offset     int
+	generation uint64
+	articles   []db.Article
+	consumed   int
+	hasMore    bool
+	err        error
+}
 
 // listenForArticles converts the poller channel into a Bubble Tea command.
 func listenForArticles(ch <-chan feed.NewArticleMsg) tea.Cmd {
@@ -59,23 +63,67 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case loadOlderMsg:
+		if !m.articlesHasMore || m.articlesLoading || m.tabIdx >= len(m.tabs) {
+			return m, nil
+		}
 		m.status = "loading older articles…"
-		poller := m.poller
+		m.articlesLoading = true
+		tabIdx := m.tabIdx
+		tab := m.tabs[tabIdx]
+		offset := m.articlesOffset
+		generation := m.articlesGeneration
+		database := m.db
+		query := m.filterQuery
 		return m, func() tea.Msg {
-			poller.PollAll(context.Background())
-			return loadOlderDoneMsg{}
+			articles, err := listArticlesForTab(database, tab, articlesPageSize+1, offset)
+			if err != nil {
+				return loadOlderDoneMsg{tabIdx: tabIdx, offset: offset, generation: generation, err: err}
+			}
+			hasMore := len(articles) > articlesPageSize
+			consumed := len(articles)
+			if hasMore {
+				articles = articles[:articlesPageSize]
+				consumed = articlesPageSize
+			}
+			for i, j := 0, len(articles)-1; i < j; i, j = i+1, j-1 {
+				articles[i], articles[j] = articles[j], articles[i]
+			}
+			return loadOlderDoneMsg{
+				tabIdx:     tabIdx,
+				offset:     offset,
+				generation: generation,
+				articles:   filterArticlesByQuery(articles, query),
+				consumed:   consumed,
+				hasMore:    hasMore,
+			}
 		}
 
 	case loadOlderDoneMsg:
+		if msg.tabIdx != m.tabIdx || msg.offset != m.articlesOffset || msg.generation != m.articlesGeneration {
+			return m, nil
+		}
+		m.articlesLoading = false
+		if msg.err != nil {
+			m.status = "load older: " + msg.err.Error()
+			return m, nil
+		}
 		prevLen := len(m.articles)
-		_ = m.reloadArticles()
+		m.articlesOffset += msg.consumed
+		m.articlesHasMore = msg.hasMore
+		if len(msg.articles) > 0 {
+			m.articles = append(msg.articles, m.articles...)
+			m.cursor += len(msg.articles)
+		}
 		added := len(m.articles) - prevLen
 		if added > 0 {
 			m.status = fmt.Sprintf("loaded %d older article(s)", added)
+		} else if msg.hasMore {
+			m.status = "no matching older articles"
 		} else {
 			m.status = "no older articles found"
 		}
-		m.viewport.SetContent(m.renderArticles())
+		m.centerViewportOnCursor()
+		m.updateDetailContent()
 		return m, nil
 
 	case newArticleMsg:
@@ -252,7 +300,7 @@ func (m *Model) updateNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mcpResult = ""
 			m.syncViewportToCursor()
 			m.updateDetailContent()
-		} else if m.articlesOffset <= 0 {
+		} else if m.articlesHasMore && !m.articlesLoading {
 			return m, func() tea.Msg { return loadOlderMsg{} }
 		}
 	case key.Matches(msg, keys.Down):
@@ -293,6 +341,8 @@ func (m *Model) handleYKey() (tea.Model, tea.Cmd) {
 		} else {
 			m.status = "cleared: all feeds, articles, and groups removed"
 			_ = m.reloadTabs()
+			m.articlesOffset = 0
+			m.articlesHasMore = false
 			_ = m.reloadArticles()
 			m.cursor = 0
 			m.viewport.SetContent(m.renderArticles())
@@ -375,171 +425,4 @@ func (m *Model) updateCommand(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var tiCmd tea.Cmd
 	m.input, tiCmd = m.input.Update(msg)
 	return m, tiCmd
-}
-
-// reloadGroupPreservePos switches to m.tabIdx's articles, saving/restoring cursor.
-func (m *Model) reloadGroupPreservePos(prevTab int) {
-	m.tabCursors[prevTab] = m.cursor
-	m.tabOffsets[prevTab] = m.viewport.YOffset
-	m.articlesOffset = 0
-	_ = m.reloadArticles()
-	if saved, ok := m.tabCursors[m.tabIdx]; ok {
-		if saved < len(m.articles) {
-			m.cursor = saved
-		}
-	}
-	if offset, ok := m.tabOffsets[m.tabIdx]; ok {
-		m.viewport.Width = m.listWidth()
-		m.viewport.Height = m.contentHeight()
-		m.viewport.SetContent(m.renderArticles())
-		m.viewport.SetYOffset(offset)
-	} else {
-		m.centerViewportOnCursor()
-	}
-	m.updateDetailContent()
-}
-
-func (m *Model) syncViewportToCursor() {
-	m.centerViewportOnCursor()
-}
-
-func (m *Model) centerViewportOnCursor() {
-	m.viewport.Width = m.listWidth()
-	m.viewport.Height = m.contentHeight()
-	content := m.renderArticles()
-	cardTop, cardBottom := m.cursorLineRange()
-	cardCenter := cardTop + (cardBottom-cardTop)/2
-	offset := cardCenter - m.viewport.Height/2
-	if offset < 0 {
-		offset = 0
-	}
-	maxOffset := maxContentOffset(content, m.viewport.Height)
-	if offset > maxOffset {
-		offset = maxOffset
-	}
-	m.viewport.SetContent(content)
-	m.viewport.SetYOffset(offset)
-}
-
-func (m *Model) cursorLineRange() (int, int) {
-	return m.articleLineRange(m.cursor)
-}
-
-func (m *Model) articleLineRange(idx int) (int, int) {
-	if idx < 0 || idx >= len(m.articles) {
-		return 0, 0
-	}
-	innerWidth := m.listWidth() - 4
-	if innerWidth < 10 {
-		innerWidth = 10
-	}
-	top := 0
-	for i, a := range m.articles {
-		cardLines := strings.Count(m.renderCard(i, a, innerWidth), "\n") + 1
-		if i == idx {
-			return top, top + cardLines
-		}
-		top += cardLines
-		if i < len(m.articles)-1 {
-			top += articleGapLines
-		}
-	}
-	return 0, 0
-}
-
-func (m *Model) articleAtLine(line int) (int, int) {
-	if line < 0 {
-		return -1, 0
-	}
-	innerWidth := m.listWidth() - 4
-	if innerWidth < 10 {
-		innerWidth = 10
-	}
-	top := 0
-	for i, a := range m.articles {
-		cardLines := strings.Count(m.renderCard(i, a, innerWidth), "\n") + 1
-		if line >= top && line < top+cardLines {
-			return i, line - top
-		}
-		top += cardLines
-		if i < len(m.articles)-1 {
-			if line >= top && line < top+articleGapLines {
-				return -1, 0
-			}
-			top += articleGapLines
-		}
-	}
-	return -1, 0
-}
-
-func maxContentOffset(content string, viewportHeight int) int {
-	totalLines := strings.Count(content, "\n") + 1
-	return max(0, totalLines-viewportHeight)
-}
-
-func (m *Model) contentHeight() int {
-	if m.mode == modeCommand || m.mode == modeSuggestInput {
-		return m.height - 4 - inputBoxHeight
-	}
-	if m.status != "" {
-		return m.height - 5
-	}
-	return m.height - 4
-}
-
-func (m *Model) resizeViewport() {
-	h := m.contentHeight()
-	m.viewport.Width = m.listWidth()
-	m.viewport.Height = h
-	m.detailVP.Width = m.detailPaneWidth()
-	m.detailVP.Height = h
-	m.centerViewportOnCursor()
-	m.updateDetailContent()
-}
-
-func (m *Model) updateDetailContent() {
-	if !m.detailOpen || m.detailPaneWidth() <= 0 {
-		return
-	}
-	m.detailVP.SetYOffset(0)
-	m.detailVP.SetContent(m.renderDetailContent())
-}
-
-// parseSuggestJSON extracts feeds from AI response JSON.
-func parseSuggestJSON(text string) ([]suggestFeed, error) {
-	start := strings.Index(text, "{")
-	end := strings.LastIndex(text, "}")
-	if start < 0 || end < start {
-		return nil, fmt.Errorf("no JSON found")
-	}
-	var result struct {
-		Feeds []struct {
-			Title       string `json:"title"`
-			URL         string `json:"url"`
-			Description string `json:"description"`
-		} `json:"feeds"`
-	}
-	if err := json.Unmarshal([]byte(text[start:end+1]), &result); err != nil {
-		return nil, err
-	}
-	feeds := make([]suggestFeed, 0, len(result.Feeds))
-	for _, f := range result.Feeds {
-		if f.URL != "" {
-			feeds = append(feeds, suggestFeed{Title: f.Title, URL: f.URL, Description: f.Description})
-		}
-	}
-	return feeds, nil
-}
-
-func openBrowser(url string) error {
-	var cmd string
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = "open"
-	case "linux":
-		cmd = "xdg-open"
-	default:
-		cmd = "start"
-	}
-	return exec.Command(cmd, url).Start()
 }

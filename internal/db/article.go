@@ -69,62 +69,41 @@ const articleSelectQ = `
 	FROM articles a
 	JOIN feeds f ON f.id = a.feed_id
 	%s
-	ORDER BY COALESCE(a.published_at, a.created_at) DESC
-	LIMIT ? OFFSET ?`
-
-const articleSelectDescQ = `
-	SELECT a.id, a.feed_id, COALESCE(f.title, f.url),
-	       a.guid, a.title, COALESCE(a.link,''), COALESCE(a.summary,''),
-	       a.published_at, a.is_read, a.is_stocked, a.created_at
-	FROM articles a
-	JOIN feeds f ON f.id = a.feed_id
-	%s
-	ORDER BY COALESCE(a.published_at, a.created_at) DESC
-	LIMIT ?`
+	ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC`
 
 // ListArticles returns articles ordered newest-first.
 func (d *DB) ListArticles(groupID *int64, limit, offset int) ([]Article, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
+	var args []any
+	where := ""
 	if groupID == nil {
-		rows, err = d.Query(fmt.Sprintf(articleSelectQ, ""), limit, offset)
+		args = nil
 	} else {
-		rows, err = d.Query(fmt.Sprintf(articleSelectQ, "WHERE f.group_id = ?"), *groupID, limit, offset)
+		where = "WHERE f.group_id = ?"
+		args = []any{*groupID}
 	}
+	articles, err := d.queryArticles(where, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	articles, err := scanArticles(rows)
-	if err != nil {
-		return nil, err
-	}
-	return dedupeArticles(articles), nil
+	return pageArticles(dedupeArticles(articles), limit, offset), nil
 }
 
 // ListRecentArticles returns the N most recent articles in newest-first order.
 // groupID=nil means all groups.
 func (d *DB) ListRecentArticles(groupID *int64, limit int) ([]Article, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
+	var args []any
+	where := ""
 	if groupID == nil {
-		rows, err = d.Query(fmt.Sprintf(articleSelectDescQ, ""), limit)
+		args = nil
 	} else {
-		rows, err = d.Query(fmt.Sprintf(articleSelectDescQ, "WHERE f.group_id = ?"), *groupID, limit)
+		where = "WHERE f.group_id = ?"
+		args = []any{*groupID}
 	}
+	articles, err := d.queryArticles(where, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	articles, err := scanArticles(rows)
-	if err != nil {
-		return nil, err
-	}
-	return dedupeArticles(articles), nil
+	return pageArticles(dedupeArticles(articles), limit, 0), nil
 }
 
 // ListTodayArticles returns all articles published or created in the last 24 hours.
@@ -251,16 +230,31 @@ func normalizedArticleLink(raw string) string {
 
 // ListStockedArticles returns articles marked as stocked (favourites).
 func (d *DB) ListStockedArticles(limit, offset int) ([]Article, error) {
-	rows, err := d.Query(fmt.Sprintf(articleSelectQ, "WHERE a.is_stocked = 1"), limit, offset)
+	articles, err := d.queryArticles("WHERE a.is_stocked = 1")
+	if err != nil {
+		return nil, err
+	}
+	return pageArticles(dedupeArticles(articles), limit, offset), nil
+}
+
+func (d *DB) queryArticles(where string, args ...any) ([]Article, error) {
+	rows, err := d.Query(fmt.Sprintf(articleSelectQ, where), args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	articles, err := scanArticles(rows)
-	if err != nil {
-		return nil, err
+	return scanArticles(rows)
+}
+
+func pageArticles(articles []Article, limit, offset int) []Article {
+	if offset < 0 || offset >= len(articles) {
+		return []Article{}
 	}
-	return dedupeArticles(articles), nil
+	end := len(articles)
+	if limit > 0 && end > offset+limit {
+		end = offset + limit
+	}
+	return articles[offset:end]
 }
 
 // MarkRead marks an article as read.

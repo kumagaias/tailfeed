@@ -20,7 +20,6 @@ import (
 
 const (
 	articlesPageSize = 50
-	articlesLimit    = 1000
 )
 
 // Server exposes a local browser UI for tailfeed.
@@ -185,7 +184,7 @@ func (s *Server) groups() ([]groupResponse, error) {
 		out = append(out, groupResponse{ID: strconv.FormatInt(g.ID, 10), Name: g.Name})
 	}
 	for i := range out {
-		articles, err := s.articles(out[i].ID, articlesLimit, 0)
+		articles, err := s.articles(out[i].ID, 0, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +195,7 @@ func (s *Server) groups() ([]groupResponse, error) {
 
 func (s *Server) articlePage(group, query string, offset int) ([]db.Article, bool, error) {
 	if query != "" {
-		articles, err := s.articles(group, articlesLimit, 0)
+		articles, err := s.articles(group, 0, 0)
 		if err != nil {
 			return nil, false, err
 		}
@@ -466,11 +465,13 @@ button, input { font: inherit; }
 }
 .sidebar {
   height: 100vh;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--sidebar-bg);
   color: var(--sidebar-text);
   padding: 18px 12px;
   border-right: 1px solid var(--sidebar-line);
+  display: flex;
+  flex-direction: column;
 }
 .brand {
   display: flex;
@@ -494,46 +495,49 @@ button, input { font: inherit; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
 }
-.feed-manager {
-  margin-top: 18px;
-  padding: 14px 8px 0;
+.settings-link {
+  margin-top: auto;
+  padding-top: 14px;
   border-top: 1px solid var(--sidebar-line);
 }
-.feed-manager summary { color: var(--sidebar-muted); cursor: pointer; font-weight: 700; }
+.settings-link .group { grid-template-columns: auto minmax(0, 1fr); }
+.settings-icon { font-size: 17px; line-height: 1; }
 .feed-form { display: flex; gap: 6px; margin-top: 10px; }
 .feed-form input {
   min-width: 0;
   width: 100%;
   padding: 7px 8px;
-  border: 1px solid #343b44;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: #171b20;
-  color: var(--sidebar-text);
+  background: var(--input-bg);
+  color: var(--text);
 }
 .feed-form button, .feed-remove {
-  border: 1px solid #343b44;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--sidebar-hover);
-  color: var(--sidebar-text);
+  background: var(--panel);
+  color: var(--text);
   cursor: pointer;
 }
 .feed-form button { padding: 6px 9px; }
 .feed-list { margin-top: 10px; display: grid; gap: 6px; }
 .feed-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
-.feed-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sidebar-muted); font-size: 12px; }
+.feed-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--summary); font-size: 13px; }
 .feed-remove { padding: 2px 6px; color: #f7a7b9; }
 .catalog-controls { display: grid; grid-template-columns: 1fr 72px; gap: 6px; margin-top: 12px; }
 .catalog-controls select {
   min-width: 0;
   padding: 6px;
-  border: 1px solid #343b44;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: #171b20;
-  color: var(--sidebar-text);
+  background: var(--input-bg);
+  color: var(--text);
 }
 .catalog-results { display: grid; gap: 7px; margin-top: 10px; max-height: 260px; overflow: auto; }
-.catalog-feed { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; color: var(--sidebar-muted); font-size: 12px; }
+.catalog-feed { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; color: var(--summary); font-size: 13px; }
 .catalog-feed input { margin-top: 3px; }
 .catalog-feed small { display: block; color: #8893a0; }
 .catalog-add { width: 100%; margin-top: 10px; padding: 7px; }
@@ -566,13 +570,26 @@ button, input { font: inherit; }
   text-align: right;
 }
 .main {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   height: 100vh;
   overflow: hidden;
 }
+.article-view { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; }
+.settings-view { height: 100%; overflow: auto; padding: 34px; }
+.settings-view[hidden], .article-view[hidden] { display: none; }
+.settings-inner { width: min(100%, 760px); margin: 0 auto; }
+.settings-header h1 { margin: 0; font-size: 25px; }
+.settings-header p { margin: 6px 0 0; color: var(--muted); }
+.settings-card { margin-top: 24px; padding: 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+.settings-card h2 { margin: 0; font-size: 18px; }
+.settings-card > p { color: var(--muted); margin: 5px 0 16px; }
+.settings-card .feed-form { max-width: 520px; }
+.settings-card .catalog-controls { max-width: 520px; grid-template-columns: minmax(0, 1fr) 130px; }
+.settings-card .catalog-results { max-width: 520px; }
+.settings-card .catalog-add { max-width: 520px; }
+.settings-card .feed-list { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 14px; }
+.settings-card .feed-row { min-height: 34px; }
 .toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px auto;
@@ -808,6 +825,9 @@ button, input { font: inherit; }
   .groups { flex-direction: row; overflow-x: auto; }
   .group { min-width: 140px; }
   .main { height: auto; overflow: visible; }
+  .article-view { height: auto; }
+  .settings-link { margin-top: 10px; }
+  .settings-view { padding: 24px 16px; }
   .toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
   .search { grid-column: 1 / -1; }
   .content { grid-template-columns: 1fr; }
@@ -823,33 +843,47 @@ button, input { font: inherit; }
   <aside class="sidebar">
     <div class="brand"><span class="brand-mark">tf</span><span>tailfeed</span></div>
     <nav id="groups" class="groups"></nav>
-    <details class="feed-manager">
-      <summary>Manage feeds</summary>
-      <form id="feedForm" class="feed-form">
-        <input id="feedURL" type="url" required placeholder="https://…" aria-label="Feed URL">
-        <button type="submit">Add</button>
-      </form>
-      <div class="catalog-controls">
-        <select id="catalogGenre" aria-label="Feed genre"><option value="">Browse catalog…</option></select>
-        <select id="catalogLanguage" aria-label="Feed language"><option value="">All</option><option value="ja">日本語</option><option value="en">English</option></select>
-      </div>
-      <div id="catalogResults" class="catalog-results"></div>
-      <button id="catalogAdd" class="feed-form catalog-add" type="button" hidden>Add selected</button>
-      <div id="feedList" class="feed-list"></div>
-    </details>
+    <div class="settings-link">
+      <button id="settingsButton" class="group" type="button"><span class="settings-icon" aria-hidden="true">⚙</span><span class="group-name">Settings</span></button>
+    </div>
   </aside>
   <main class="main">
-    <header class="toolbar">
-      <div class="title">
-        <h1 id="currentGroup">All</h1>
-        <span id="articleCount" class="meta">0 articles</span>
+    <section id="articleView" class="article-view">
+      <header class="toolbar">
+        <div class="title">
+          <h1 id="currentGroup">All</h1>
+          <span id="articleCount" class="meta">0 articles</span>
+        </div>
+        <input id="search" class="search" type="search" placeholder="Search articles">
+        <button id="detailToggle" class="action" type="button">Hide detail</button>
+      </header>
+      <section id="content" class="content">
+        <div id="list" class="list"></div>
+        <article id="detail" class="detail"></article>
+      </section>
+    </section>
+    <section id="settingsView" class="settings-view" hidden>
+      <div class="settings-inner">
+        <header class="settings-header">
+          <h1>Settings</h1>
+          <p>Manage the feeds that appear in your timeline.</p>
+        </header>
+        <section class="settings-card">
+          <h2>Feeds</h2>
+          <p>Add a feed directly or choose one from the catalog.</p>
+          <form id="feedForm" class="feed-form">
+            <input id="feedURL" type="url" required placeholder="https://…" aria-label="Feed URL">
+            <button type="submit">Add</button>
+          </form>
+          <div class="catalog-controls">
+            <select id="catalogGenre" aria-label="Feed genre"><option value="">Browse catalog…</option></select>
+            <select id="catalogLanguage" aria-label="Feed language"><option value="">All languages</option><option value="ja">日本語</option><option value="en">English</option></select>
+          </div>
+          <div id="catalogResults" class="catalog-results"></div>
+          <button id="catalogAdd" class="feed-form catalog-add" type="button" hidden>Add selected</button>
+          <div id="feedList" class="feed-list"></div>
+        </section>
       </div>
-      <input id="search" class="search" type="search" placeholder="Search articles">
-      <button id="detailToggle" class="action" type="button">Hide detail</button>
-    </header>
-    <section id="content" class="content">
-      <div id="list" class="list"></div>
-      <article id="detail" class="detail"></article>
     </section>
   </main>
 </div>
@@ -858,8 +892,11 @@ const pageSize = 50;
 const state = {
   group: "all", query: "", articles: [], selected: null,
   groups: [], hasMore: false, loading: false, pendingG: false, detailOpen: true,
-  suppressScrollLoad: false
+  suppressScrollLoad: false, view: "articles"
 };
+const articleViewEl = document.getElementById("articleView");
+const settingsViewEl = document.getElementById("settingsView");
+const settingsButtonEl = document.getElementById("settingsButton");
 const contentEl = document.getElementById("content");
 const groupsEl = document.getElementById("groups");
 const listEl = document.getElementById("list");
@@ -894,6 +931,8 @@ function loadingView(message, options = {}) {
 async function load(options = {}) {
   const older = Boolean(options.older);
   if (state.loading || (older && !state.hasMore)) return;
+  const previousHeight = older ? listEl.scrollHeight : 0;
+  const previousTop = older ? listEl.scrollTop : 0;
   state.loading = true;
   if (older) renderList();
   const params = new URLSearchParams({
@@ -901,12 +940,11 @@ async function load(options = {}) {
     offset: older ? String(state.articles.length) : "0"
   });
   if (state.query) params.set("q", state.query);
+  let loaded = false;
   try {
     const res = await fetch("/api/state?" + params.toString());
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    const previousHeight = listEl.scrollHeight;
-    const previousTop = listEl.scrollTop;
     const incoming = data.articles || [];
     state.articles = older ? incoming.concat(state.articles) : incoming;
     state.hasMore = Boolean(data.hasMore);
@@ -916,17 +954,32 @@ async function load(options = {}) {
     }
     state.groups = data.groups || [];
     renderGroups();
-    renderList();
     renderDetail();
-    if (older) {
-      listEl.scrollTop = previousTop + (listEl.scrollHeight - previousHeight);
-    } else {
-      listEl.scrollTop = listEl.scrollHeight;
-    }
+    loaded = true;
   } finally {
     state.loading = false;
     renderList();
+    if (loaded) {
+      const targetTop = older
+        ? previousTop + (listEl.scrollHeight - previousHeight)
+        : listEl.scrollHeight;
+      restoreListScroll(targetTop);
+    }
   }
+}
+
+function restoreListScroll(top) {
+  state.suppressScrollLoad = true;
+  listEl.scrollTop = Math.max(0, top);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { state.suppressScrollLoad = false; });
+  });
+}
+
+function renderListPreservingScroll() {
+  const top = listEl.scrollTop;
+  renderList();
+  restoreListScroll(top);
 }
 
 function renderGroups() {
@@ -981,14 +1034,20 @@ async function loadCatalogFeeds() {
 
 function renderCatalogFeeds() {
   const registered = new Set(localFeeds.map(f => f.url));
-  catalogResultsEl.innerHTML = catalogFeeds.map((f, index) => {
-    const exists = registered.has(f.url);
+  const available = catalogFeeds
+    .map((feed, index) => ({ feed, index }))
+    .filter(item => !registered.has(item.feed.url));
+  catalogResultsEl.innerHTML = available.map(item => {
+    const f = item.feed;
     return '<label class="catalog-feed">' +
-      '<input type="checkbox" data-catalog-index="' + index + '" ' + (exists ? "checked disabled" : "") + '>' +
-      '<span>' + escapeHTML(f.title) + '<small>' + escapeHTML(exists ? "Already added" : (f.description || f.url)) + '</small></span>' +
+      '<input type="checkbox" data-catalog-index="' + item.index + '">' +
+      '<span>' + escapeHTML(f.title) + '<small>' + escapeHTML(f.description || f.url) + '</small></span>' +
     '</label>';
   }).join("");
-  catalogAddEl.hidden = !catalogFeeds.some(f => !registered.has(f.url));
+  if (catalogGenreEl.value && catalogFeeds.length && !available.length) {
+    catalogResultsEl.innerHTML = '<div class="empty">All feeds in this category are already added.</div>';
+  }
+  catalogAddEl.hidden = !available.length;
 }
 
 catalogGenreEl.addEventListener("change", () => loadCatalogFeeds().catch(showError));
@@ -1103,17 +1162,37 @@ function renderDetail() {
       (a.link ? '<a class="action primary" href="' + escapeHTML(a.link) + '" target="_blank" rel="noreferrer">Open</a>' : "") +
       '<button class="action" id="stockButton">' + (a.isStocked ? "Unstock" : "Stock") + '</button>' +
     '</div>';
-  fetch("/api/articles/" + a.id + "/read", { method: "POST" }).then(() => { a.isRead = true; renderList(); });
+  fetch("/api/articles/" + a.id + "/read", { method: "POST" }).then(() => {
+    if (!state.articles.some(item => item.id === a.id)) return;
+    a.isRead = true;
+    renderListPreservingScroll();
+  });
 }
 
 groupsEl.addEventListener("click", event => {
   const button = event.target.closest("[data-group]");
   if (!button) return;
+  showArticleView();
   state.group = button.dataset.group;
   state.selected = null;
   state.hasMore = false;
   load();
 });
+
+settingsButtonEl.addEventListener("click", () => {
+  state.view = "settings";
+  articleViewEl.hidden = true;
+  settingsViewEl.hidden = false;
+  settingsButtonEl.classList.add("active");
+  loadFeeds().then(renderCatalogFeeds).catch(showError);
+});
+
+function showArticleView() {
+  state.view = "articles";
+  articleViewEl.hidden = false;
+  settingsViewEl.hidden = true;
+  settingsButtonEl.classList.remove("active");
+}
 
 listEl.addEventListener("click", event => {
   const loadOlder = event.target.closest("[data-load-older]");
@@ -1139,7 +1218,7 @@ listEl.addEventListener("click", event => {
 });
 
 listEl.addEventListener("scroll", () => {
-  if (!state.suppressScrollLoad && listEl.scrollTop <= 80) {
+  if (!state.suppressScrollLoad && !state.loading && state.hasMore && listEl.scrollTop <= 80) {
     load({ older: true }).catch(showError);
   }
 });
@@ -1249,6 +1328,10 @@ document.addEventListener("keydown", event => {
       event.target.blur();
       event.preventDefault();
     }
+    return;
+  }
+  if (state.view === "settings") {
+    if (event.key === "Escape") showArticleView();
     return;
   }
   if (event.key !== "g") state.pendingG = false;

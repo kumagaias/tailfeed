@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/kumagaias/tailfeed/internal/db"
@@ -50,6 +51,29 @@ func TestFeedHandlersAddListAndRemove(t *testing.T) {
 	server.handleFeed(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("remove feed status = %d, body = %q", response.Code, response.Body.String())
+	}
+}
+
+func TestIndexPlacesFeedManagementInSettingsView(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+	New(openWebTestDB(t)).handleIndex(response, request)
+
+	body := response.Body.String()
+	settingsButton := strings.Index(body, `id="settingsButton"`)
+	settingsView := strings.Index(body, `id="settingsView"`)
+	feedForm := strings.Index(body, `id="feedForm"`)
+	if settingsButton < 0 || settingsView < 0 || feedForm < 0 {
+		t.Fatal("settings navigation or feed management markup is missing")
+	}
+	if feedForm < settingsView {
+		t.Fatal("feed management must be rendered in the main settings view")
+	}
+	if strings.Contains(body, `<summary>Manage feeds</summary>`) {
+		t.Fatal("legacy sidebar feed manager is still present")
+	}
+	if !strings.Contains(body, `.filter(item => !registered.has(item.feed.url))`) {
+		t.Fatal("catalog must exclude feeds that are already registered")
 	}
 }
 

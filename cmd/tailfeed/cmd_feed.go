@@ -108,7 +108,7 @@ var sampleFeedsByLang = map[string][]sampleFeed{
 		{"Qiita トレンド", "https://qiita.com/popular-items/feed"},
 		{"はてなブックマーク IT", "https://b.hatena.ne.jp/hotentry/it.rss"},
 		{"gihyo.jp", "https://gihyo.jp/feed/atom"},
-		{"NHK IT・ネット", "https://www3.nhk.or.jp/rss/news/cat06.xml"},
+		{"NHK 主要ニュース", "https://news.web.nhk/n-data/conf/na/rss/cat0.xml"},
 	},
 }
 

@@ -3,6 +3,7 @@ package db_test
 import (
 	"database/sql"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -25,6 +26,99 @@ func openTestDB(t *testing.T) *db.DB {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return d
+}
+
+func TestMigrationUpdatesLegacyNHKFeedURL(t *testing.T) {
+	d := openTestDB(t)
+
+	const migration = "003_update_nhk_feed_url.sql"
+	if _, err := d.Exec(`DELETE FROM schema_migrations WHERE name = ?`, migration); err != nil {
+		t.Fatalf("reset migration: %v", err)
+	}
+	if _, err := d.Exec(`INSERT INTO feeds (url, title, site_url, last_fetched_at)
+		VALUES (?, ?, ?, ?)`,
+		"https://www3.nhk.or.jp/rss/news/cat06.xml", "NHK IT・ネット",
+		"https://www3.nhk.or.jp/news/", time.Now()); err != nil {
+		t.Fatalf("insert legacy feed: %v", err)
+	}
+
+	if err := d.MigrateForTest(); err != nil {
+		t.Fatalf("rerun migrations: %v", err)
+	}
+	feeds, err := d.ListFeeds(nil)
+	if err != nil {
+		t.Fatalf("list feeds: %v", err)
+	}
+	if len(feeds) != 1 {
+		t.Fatalf("expected 1 feed, got %d", len(feeds))
+	}
+	if got, want := feeds[0].URL, "https://news.web.nhk/n-data/conf/na/rss/cat0.xml"; got != want {
+		t.Errorf("URL = %q, want %q", got, want)
+	}
+	if feeds[0].Title != "" || feeds[0].SiteURL != "" || feeds[0].LastFetchedAt != nil {
+		t.Error("expected stale feed metadata to be cleared")
+	}
+}
+
+func TestMigrationMergesLegacyNHKFeedHistory(t *testing.T) {
+	d := openTestDB(t)
+
+	const migration = "003_update_nhk_feed_url.sql"
+	if _, err := d.Exec(`DELETE FROM schema_migrations WHERE name = ?`, migration); err != nil {
+		t.Fatalf("reset migration: %v", err)
+	}
+	if _, err := d.Exec(`INSERT INTO feeds (url, title) VALUES (?, ?), (?, ?)`,
+		"https://www3.nhk.or.jp/rss/news/cat06.xml", "Legacy NHK",
+		"https://news.web.nhk/n-data/conf/na/rss/cat0.xml", "Current NHK"); err != nil {
+		t.Fatalf("insert feeds: %v", err)
+	}
+	var legacyID, currentID int64
+	if err := d.QueryRow(`SELECT id FROM feeds WHERE url = ?`, "https://www3.nhk.or.jp/rss/news/cat06.xml").Scan(&legacyID); err != nil {
+		t.Fatalf("find legacy feed: %v", err)
+	}
+	if err := d.QueryRow(`SELECT id FROM feeds WHERE url = ?`, "https://news.web.nhk/n-data/conf/na/rss/cat0.xml").Scan(&currentID); err != nil {
+		t.Fatalf("find current feed: %v", err)
+	}
+	if _, err := d.Exec(`INSERT INTO articles (feed_id, guid, title, link) VALUES (?, ?, ?, ?), (?, ?, ?, ?)`,
+		legacyID, "legacy-only", "Legacy history", "https://example.com/legacy",
+		legacyID, "shared", "Legacy duplicate", "https://example.com/shared"); err != nil {
+		t.Fatalf("insert legacy articles: %v", err)
+	}
+	if _, err := d.Exec(`INSERT INTO articles (feed_id, guid, title, link) VALUES (?, ?, ?, ?)`,
+		currentID, "shared", "Current duplicate", "https://example.com/shared"); err != nil {
+		t.Fatalf("insert current article: %v", err)
+	}
+
+	if err := d.MigrateForTest(); err != nil {
+		t.Fatalf("rerun migrations: %v", err)
+	}
+
+	var feedCount, articleCount int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM feeds WHERE url = ?`, "https://www3.nhk.or.jp/rss/news/cat06.xml").Scan(&feedCount); err != nil {
+		t.Fatal(err)
+	}
+	if feedCount != 0 {
+		t.Fatalf("legacy feed still exists: %d", feedCount)
+	}
+	if err := d.QueryRow(`SELECT COUNT(*) FROM feeds WHERE url = ?`, "https://news.web.nhk/n-data/conf/na/rss/cat0.xml").Scan(&feedCount); err != nil {
+		t.Fatal(err)
+	}
+	if feedCount != 1 {
+		t.Fatalf("current feed count = %d, want 1", feedCount)
+	}
+	if err := d.QueryRow(`SELECT COUNT(*) FROM articles`).Scan(&articleCount); err != nil {
+		t.Fatal(err)
+	}
+	if articleCount != 2 {
+		t.Fatalf("article count = %d, want 2", articleCount)
+	}
+	var got string
+	if err := d.QueryRow(`SELECT title FROM articles WHERE guid = ?`, "legacy-only").Scan(&got); err != nil {
+		t.Fatalf("legacy article was not preserved: %v", err)
+	}
+	if got != "Legacy history" {
+		t.Fatalf("legacy article title = %q", got)
+	}
 }
 
 // ── Group ─────────────────────────────────────────────────────────────────────
@@ -355,6 +449,45 @@ func TestArticleOrderedNewestFirst(t *testing.T) {
 		if a.Title != expected {
 			t.Errorf("position %d: expected %q, got %q", i, expected, a.Title)
 		}
+	}
+}
+
+func TestListArticlesPaginatesAfterDeduplication(t *testing.T) {
+	d := openTestDB(t)
+	f, _ := d.AddFeed("https://example.com/rss", nil)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i <= 50; i++ {
+		published := base.Add(time.Duration(60-i) * time.Minute)
+		_, err := d.Exec(
+			`INSERT INTO articles (feed_id, guid, title, link, published_at) VALUES (?, ?, ?, ?, ?)`,
+			f.ID, "guid-"+strconv.Itoa(i), "Article "+strconv.Itoa(i),
+			"https://example.com/article/"+strconv.Itoa(i), published,
+		)
+		if err != nil {
+			t.Fatalf("insert article %d: %v", i, err)
+		}
+	}
+	duplicateTime := base.Add(60 * time.Minute)
+	if _, err := d.Exec(
+		`INSERT INTO articles (feed_id, guid, title, link, published_at) VALUES (?, ?, ?, ?, ?)`,
+		f.ID, "duplicate-guid", "Duplicate article", "https://example.com/article/0", duplicateTime,
+	); err != nil {
+		t.Fatalf("insert duplicate: %v", err)
+	}
+
+	page, err := d.ListArticles(nil, 51, 0)
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if len(page) != 51 {
+		t.Fatalf("first page length = %d, want 51 unique articles", len(page))
+	}
+	older, err := d.ListArticles(nil, 1, 50)
+	if err != nil {
+		t.Fatalf("older page: %v", err)
+	}
+	if len(older) != 1 || older[0].Title != "Article 50" {
+		t.Fatalf("older page = %#v, want Article 50", older)
 	}
 }
 

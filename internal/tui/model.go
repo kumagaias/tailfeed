@@ -78,8 +78,14 @@ type Model struct {
 	tabCursors map[int]int
 	// tabOffsets remembers the viewport YOffset for each tab index.
 	tabOffsets map[int]int
-	// articlesOffset is the DB OFFSET for the current article page (for loading older articles).
+	// articlesOffset is the number of newest unique articles already loaded.
 	articlesOffset int
+	// articlesHasMore reports whether another older page is available.
+	articlesHasMore bool
+	// articlesLoading prevents duplicate older-page requests.
+	articlesLoading bool
+	// articlesGeneration invalidates an older-page request after a reload.
+	articlesGeneration uint64
 	// mcpResult holds the latest MCP response to show in the detail pane.
 	mcpResult string
 	// filterQuery is the active keyword filter (empty = no filter).
@@ -159,44 +165,65 @@ func (m *Model) reloadTabs() error {
 }
 
 func (m *Model) reloadArticles() error {
-	var (
-		articles []db.Article
-		err      error
-	)
-	if m.tabIdx < len(m.tabs) && m.tabs[m.tabIdx].isStock {
-		articles, err = m.db.ListStockedArticles(articlesLimit, m.articlesOffset)
-	} else {
-		var groupID *int64
-		if m.tabIdx > 0 && m.tabIdx < len(m.tabs) && !m.tabs[m.tabIdx].isStock {
-			groupID = m.tabs[m.tabIdx].id
-		}
-		articles, err = m.db.ListArticles(groupID, articlesLimit, m.articlesOffset)
+	target := articlesLimit
+	if m.articlesOffset > 0 {
+		target = m.articlesOffset
 	}
+	articles, err := m.listArticles(target+1, 0)
 	if err != nil {
 		return err
 	}
+	m.articlesHasMore = len(articles) > target
+	if m.articlesHasMore {
+		articles = articles[:target]
+	} else {
+		m.articlesOffset = len(articles)
+	}
+	if m.articlesOffset == 0 {
+		m.articlesOffset = len(articles)
+	}
+	m.articlesGeneration++
 	// Reverse so oldest is at top, newest at bottom.
 	for i, j := 0, len(articles)-1; i < j; i, j = i+1, j-1 {
 		articles[i], articles[j] = articles[j], articles[i]
 	}
 	m.articles = articles
 	// Apply keyword filter if active.
-	if m.filterQuery != "" {
-		q := strings.ToLower(m.filterQuery)
-		filtered := m.articles[:0]
-		for _, a := range m.articles {
-			if strings.Contains(strings.ToLower(a.Title), q) ||
-				strings.Contains(strings.ToLower(a.Summary), q) ||
-				strings.Contains(strings.ToLower(a.FeedTitle), q) {
-				filtered = append(filtered, a)
-			}
-		}
-		m.articles = filtered
-	}
+	m.articles = filterArticlesByQuery(m.articles, m.filterQuery)
 	if m.cursor >= len(m.articles) {
 		m.cursor = max(0, len(m.articles)-1)
 	}
 	return nil
+}
+
+func (m *Model) listArticles(limit, offset int) ([]db.Article, error) {
+	if m.tabIdx < len(m.tabs) {
+		return listArticlesForTab(m.db, m.tabs[m.tabIdx], limit, offset)
+	}
+	return m.db.ListArticles(nil, limit, offset)
+}
+
+func listArticlesForTab(database *db.DB, tab groupTab, limit, offset int) ([]db.Article, error) {
+	if tab.isStock {
+		return database.ListStockedArticles(limit, offset)
+	}
+	return database.ListArticles(tab.id, limit, offset)
+}
+
+func filterArticlesByQuery(articles []db.Article, query string) []db.Article {
+	if query == "" {
+		return articles
+	}
+	q := strings.ToLower(query)
+	filtered := articles[:0]
+	for _, a := range articles {
+		if strings.Contains(strings.ToLower(a.Title), q) ||
+			strings.Contains(strings.ToLower(a.Summary), q) ||
+			strings.Contains(strings.ToLower(a.FeedTitle), q) {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered
 }
 
 // jumpToNewest moves the cursor to the newest article and centers the viewport on it.
