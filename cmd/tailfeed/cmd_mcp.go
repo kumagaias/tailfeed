@@ -101,7 +101,7 @@ func mcpCmd() *cobra.Command {
 
 	offCmd := &cobra.Command{
 		Use:   "off",
-		Short: "Disable the MCP server (falls back to tailfeed API)",
+		Short: "Disable the configured MCP server",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			cfg, err := mcp.LoadRaw()
 			if err != nil {

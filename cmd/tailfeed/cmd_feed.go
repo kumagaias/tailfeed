@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kumagaias/tailfeed/internal/api"
 	"github.com/kumagaias/tailfeed/internal/db"
 	"github.com/kumagaias/tailfeed/internal/mcp"
 	"github.com/kumagaias/tailfeed/internal/summary"
@@ -220,7 +219,7 @@ func listCmd() *cobra.Command {
 func summaryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "summary [today|yesterday|week]",
-		Short: "Summarise articles via MCP (or tailfeed API) and print to stdout",
+		Short: "Summarise articles via MCP and print to stdout",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			period := "today"
@@ -265,42 +264,29 @@ func summaryCmd() *cobra.Command {
 			} else {
 				fmt.Fprintf(os.Stderr, "Summarising %d articles (%s)…\n", len(articles), label)
 			}
-			fmt.Fprintf(os.Stderr, "  API attempts: max %d; incomplete articles may be retried.\n", summary.MaxAPIAttempts)
-			progress := func(ev summary.ProgressEvent) {
-				switch ev.Phase {
-				case "start":
-					fmt.Fprintf(os.Stderr, "  API attempt %d/%d: summarising articles %d-%d/%d…\n", ev.Attempt, ev.MaxAttempts, ev.ChunkStart, ev.ChunkEnd, ev.TotalArticles)
-				case "done":
-					fmt.Fprintf(os.Stderr, "  API attempt %d/%d: done\n", ev.Attempt, ev.MaxAttempts)
-				}
-			}
-
-			var text string
 			mcpCfg, err := mcp.Load()
 			if err != nil {
 				return err
 			}
-			if mcpCfg != nil {
-				language := summaryCfg.SummaryLanguage()
-				if summaryCfg.Language == "" {
-					language = mcpCfg.SummaryLanguage()
-				}
-				text, err = summary.SummarizeWithMCPInLanguageWithProgress(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language, progress)
-				if err != nil {
-					return err
-				}
-			} else {
-				apiCfg, err := api.LoadOrRegister()
-				if err != nil {
-					return err
-				}
-				language := summaryCfg.SummaryLanguage()
-				text, err = summary.SummarizeWithAPIProgress(apiCfg.UserKey, label, articles, language, summaryCfg.Theme, progress)
-				if err != nil {
-					return err
+			if mcpCfg == nil {
+				return fmt.Errorf("MCP is not configured or is disabled; use 'tailfeed mcp set <command> [args...]'")
+			}
+			language := summaryCfg.SummaryLanguage()
+			if summaryCfg.Language == "" {
+				language = mcpCfg.SummaryLanguage()
+			}
+			progress := func(ev summary.ProgressEvent) {
+				switch ev.Phase {
+				case "start":
+					fmt.Fprintf(os.Stderr, "  MCP attempt %d/%d: summarising articles %d-%d/%d…\n", ev.Attempt, ev.MaxAttempts, ev.ChunkStart, ev.ChunkEnd, ev.TotalArticles)
+				case "done":
+					fmt.Fprintf(os.Stderr, "  MCP attempt %d/%d: done\n", ev.Attempt, ev.MaxAttempts)
 				}
 			}
-
+			text, err := summary.SummarizeWithMCPInLanguageWithProgress(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language, progress)
+			if err != nil {
+				return err
+			}
 			fmt.Println(text)
 
 			path, err := tui.WriteSummaryHTML(text, articles)
@@ -374,29 +360,6 @@ func summaryCmd() *cobra.Command {
 	return cmd
 }
 
-func usageCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "usage",
-		Short: "Show plan and remaining API quota",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			apiCfg, err := api.LoadOrRegister()
-			if err != nil {
-				return err
-			}
-			info, err := api.Usage(apiCfg.UserKey)
-			if err != nil {
-				return err
-			}
-			fmt.Printf("plan:    %s\n", info.Plan)
-			fmt.Printf("usage:   %d / %d remaining (summary, suggest)\n", info.SummaryRemaining, info.SummaryLimit)
-			if info.ResetAt != "" {
-				fmt.Printf("resets:  %s\n", info.ResetAt)
-			}
-			return nil
-		},
-	}
-}
-
 func clearCmd() *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
@@ -425,23 +388,4 @@ func clearCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation prompt")
 	return cmd
-}
-
-func registerCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "register",
-		Short: "Register with the tailfeed API and save your API key",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg, err := api.Register()
-			if err != nil {
-				return err
-			}
-			if err := api.Save(cfg); err != nil {
-				return err
-			}
-			fmt.Printf("registered: user_key=%s  tier=%s\n", cfg.UserKey, cfg.Tier)
-			fmt.Println("key saved → ~/.config/tailfeed/api.json")
-			return nil
-		},
-	}
 }

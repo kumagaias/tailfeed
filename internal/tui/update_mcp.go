@@ -6,7 +6,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/kumagaias/tailfeed/internal/api"
 	"github.com/kumagaias/tailfeed/internal/db"
 	"github.com/kumagaias/tailfeed/internal/mcp"
 	"github.com/kumagaias/tailfeed/internal/summary"
@@ -15,21 +14,18 @@ import (
 // mcpResultMsg carries the result of an async MCP tools/call.
 type mcpResultMsg struct{ text string }
 
-// usageMsg carries the result of an async /v1/usage call.
-type usageMsg struct{ text string }
-
 // summaryHTMLMsg carries summary text and the generated HTML file path.
 type summaryHTMLMsg struct {
 	text string
 	path string
 }
 
-// cmdSummaryToday summarises all articles published today via MCP or the tailfeed API.
+// cmdSummaryToday summarises all articles published today through the configured MCP server.
 func (m *Model) cmdSummaryToday() (string, tea.Cmd) {
 	return m.cmdSummaryPeriod("today")
 }
 
-// cmdSummaryPeriod summarises articles for the given period ("today", "yesterday", "week").
+// cmdSummaryPeriod summarises articles for the given period through the configured MCP server.
 func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 	var articles []db.Article
 	var err error
@@ -57,40 +53,23 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 	if err != nil {
 		return "summary config: " + err.Error(), nil
 	}
-
 	mcpCfg, err := mcp.Load()
 	if err != nil {
 		return "mcp: " + err.Error(), nil
+	}
+	if mcpCfg == nil {
+		return "mcp: not configured or disabled — use 'mcp set <command> [args...]'", nil
 	}
 	status := fmt.Sprintf("summarising %d articles (%s)…", len(articles), label)
 	if originalCount > len(articles) {
 		status = fmt.Sprintf("summarising %d of %d articles (%s; newest first)…", len(articles), originalCount, label)
 	}
-	if mcpCfg != nil {
-		return status, func() tea.Msg {
-			language := summaryCfg.SummaryLanguage()
-			if summaryCfg.Language == "" {
-				language = mcpCfg.SummaryLanguage()
-			}
-			text, err := summary.SummarizeWithMCPInLanguage(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language)
-			if err != nil {
-				return mcpResultMsg{text: "summary " + period + " error: " + err.Error()}
-			}
-			path, htmlErr := writeSummaryHTML(text, articles)
-			if htmlErr == nil {
-				return summaryHTMLMsg{text: text, path: path}
-			}
-			return mcpResultMsg{text: text}
-		}
-	}
-
 	return status, func() tea.Msg {
-		apiCfg, err := api.LoadOrRegister()
-		if err != nil {
-			return mcpResultMsg{text: "api: " + err.Error()}
-		}
 		language := summaryCfg.SummaryLanguage()
-		text, err := summary.SummarizeWithAPI(apiCfg.UserKey, label, articles, language, summaryCfg.Theme)
+		if summaryCfg.Language == "" {
+			language = mcpCfg.SummaryLanguage()
+		}
+		text, err := summary.SummarizeWithMCPInLanguage(mcpCfg, label, articles, summary.DefaultMaxContextRunes, summaryCfg.Theme, language)
 		if err != nil {
 			return mcpResultMsg{text: "summary " + period + " error: " + err.Error()}
 		}
@@ -102,122 +81,60 @@ func (m *Model) cmdSummaryPeriod(period string) (string, tea.Cmd) {
 	}
 }
 
-// cmdMCP runs toolName against the configured MCP server, falling back to the tailfeed API.
+// cmdMCP runs a summary or feed suggestion with the configured MCP server.
 func (m *Model) cmdMCP(cmdName string, _ []string) (string, tea.Cmd) {
 	if m.cursor >= len(m.articles) {
 		return "no article selected", nil
 	}
 	a := m.articles[m.cursor]
-
 	mcpCfg, err := mcp.Load()
 	if err != nil {
 		return "mcp: " + err.Error(), nil
 	}
-	if mcpCfg != nil {
-		if cmdName == "suggest" {
-			args := map[string]any{
-				"question": `You are a feed curator for engineers. Based on the article below, suggest 20 RSS feeds a senior developer would actually subscribe to — think official blogs, release notes, technical deep-dives, not generic news. Return ONLY valid JSON, no prose:
-{"feeds":[{"title":"Feed Name","url":"https://...","description":"one-line description"},{"title":"Feed Name","url":"https://...","description":"one-line description"}]}`,
-				"context": fmt.Sprintf("Title: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
-			}
-			return "suggesting feeds…", func() tea.Msg {
-				text, err := mcp.Call(mcpCfg, args)
-				if err != nil {
-					return mcpResultMsg{text: "suggest error: " + err.Error()}
-				}
-				feeds, err := parseSuggestJSON(text)
-				if err != nil {
-					return mcpResultMsg{text: "suggest parse error: " + err.Error() + "\n\n" + text}
-				}
-				return mcpSuggestMsg{feeds: feeds}
-			}
-		}
-		summaryCfg, err := summary.LoadConfig()
-		if err != nil {
-			return "summary config: " + err.Error(), nil
-		}
-		theme := strings.TrimSpace(summaryCfg.Theme)
-		themeLine := ""
-		if theme != "" {
-			themeLine = " Prioritize this user theme where relevant: " + theme + "."
-		}
-		language := summaryCfg.SummaryLanguage()
-		if summaryCfg.Language == "" {
-			language = mcpCfg.SummaryLanguage()
-		}
-		question := fmt.Sprintf(`Summarize this article in %s for a senior engineer.%s Keep the original article title unchanged. Use a compact plain bullet list in %s. Do not write labels like TL;DR, Summary, Key Points, or Why It Matters. No filler.`, language, themeLine, language)
-		args := map[string]any{
-			"question": question,
-			"context":  fmt.Sprintf("Title: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
-		}
-		return fmt.Sprintf("running %s…", cmdName), func() tea.Msg {
-			text, err := mcp.Call(mcpCfg, args)
-			if err != nil {
-				return mcpResultMsg{text: cmdName + " error: " + err.Error()}
-			}
-			return mcpResultMsg{text: text}
-		}
+	if mcpCfg == nil {
+		return "mcp: not configured or disabled — use 'mcp set <command> [args...]'", nil
 	}
-
-	// MCP not configured — fall back to the tailfeed API.
 	if cmdName == "suggest" {
-		article := a
+		args := map[string]any{
+			"question": `You are a feed curator for engineers. Based on the article below, suggest 20 RSS feeds a senior developer would actually subscribe to — think official blogs, release notes, technical deep-dives, not generic news. Return ONLY valid JSON, no prose:
+{"feeds":[{"title":"Feed Name","url":"https://...","description":"one-line description"},{"title":"Feed Name","url":"https://...","description":"one-line description"}]}`,
+			"context": fmt.Sprintf("Title: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
+		}
 		return "suggesting feeds…", func() tea.Msg {
-			apiCfg, err := api.LoadOrRegister()
-			if err != nil {
-				return mcpResultMsg{text: "api: " + err.Error()}
-			}
-			feeds, err := api.Suggest(apiCfg.UserKey, article.Title, article.Link, article.Summary, "")
+			text, err := mcp.Call(mcpCfg, args)
 			if err != nil {
 				return mcpResultMsg{text: "suggest error: " + err.Error()}
 			}
-			result := make([]suggestFeed, len(feeds))
-			for i, f := range feeds {
-				result[i] = suggestFeed{Title: f.Title, URL: f.URL, Description: f.Description}
+			feeds, err := parseSuggestJSON(text)
+			if err != nil {
+				return mcpResultMsg{text: "suggest parse error: " + err.Error() + "\n\n" + text}
 			}
-			return mcpSuggestMsg{feeds: result}
+			return mcpSuggestMsg{feeds: feeds}
 		}
 	}
-	article := a
 	summaryCfg, err := summary.LoadConfig()
 	if err != nil {
 		return "summary config: " + err.Error(), nil
 	}
+	themeLine := ""
+	if theme := strings.TrimSpace(summaryCfg.Theme); theme != "" {
+		themeLine = " Prioritize this user theme where relevant: " + theme + "."
+	}
+	language := summaryCfg.SummaryLanguage()
+	if summaryCfg.Language == "" {
+		language = mcpCfg.SummaryLanguage()
+	}
+	question := fmt.Sprintf(`Summarize this article in %s for a senior engineer.%s Keep the original article title unchanged. Use a compact plain bullet list in %s. Do not write labels like TL;DR, Summary, Key Points, or Why It Matters. No filler.`, language, themeLine, language)
+	args := map[string]any{
+		"question": question,
+		"context":  fmt.Sprintf("Title: %s\nURL: %s\n\n%s", a.Title, a.Link, a.Summary),
+	}
 	return fmt.Sprintf("running %s…", cmdName), func() tea.Msg {
-		apiCfg, err := api.LoadOrRegister()
-		if err != nil {
-			return mcpResultMsg{text: "api: " + err.Error()}
-		}
-		language := summaryCfg.SummaryLanguage()
-		text, err := api.Summary(apiCfg.UserKey, []api.SummaryArticle{
-			{Title: article.Title, URL: article.Link, Summary: article.Summary},
-		}, language, summary.ThemeWithLanguageInstruction(summaryCfg.Theme, language))
+		text, err := mcp.Call(mcpCfg, args)
 		if err != nil {
 			return mcpResultMsg{text: cmdName + " error: " + err.Error()}
 		}
 		return mcpResultMsg{text: text}
-	}
-}
-
-// cmdUsage fetches /v1/usage and shows plan and remaining quota in the status bar.
-func (m *Model) cmdUsage() (string, tea.Cmd) {
-	apiCfg, err := api.LoadOrRegister()
-	if err != nil {
-		return "usage: " + err.Error(), nil
-	}
-	return "fetching usage…", func() tea.Msg {
-		info, err := api.Usage(apiCfg.UserKey)
-		if err != nil {
-			return usageMsg{text: "usage: " + err.Error()}
-		}
-		text := fmt.Sprintf("plan: %s  ·  usage: %d/%d (summary, suggest)",
-			info.Plan,
-			info.SummaryRemaining, info.SummaryLimit,
-		)
-		if info.ResetAt != "" {
-			text += "  ·  resets " + info.ResetAt
-		}
-		return usageMsg{text: text}
 	}
 }
 

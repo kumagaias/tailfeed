@@ -11,7 +11,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	gofeed "github.com/mmcdole/gofeed"
 
-	"github.com/kumagaias/tailfeed/internal/api"
 	"github.com/kumagaias/tailfeed/internal/mcp"
 )
 
@@ -72,45 +71,30 @@ func (m *Model) updateSuggestInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // cmdMCPSuggestFreeText runs suggest with a free-text theme query (no article context),
-// falling back to the tailfeed API when no MCP server is configured.
+// with the configured MCP server.
 func (m *Model) cmdMCPSuggestFreeText(query string) (string, tea.Cmd) {
 	mcpCfg, err := mcp.Load()
 	if err != nil {
 		return "mcp: " + err.Error(), nil
 	}
-	if mcpCfg != nil {
-		args := map[string]any{
-			"question": fmt.Sprintf(`You are a feed curator for engineers. Suggest 20 RSS feeds about "%s" that a senior developer would actually subscribe to — think official blogs, release notes, changelogs, technical deep-dives. Return ONLY valid JSON, no prose:
-{"feeds":[{"title":"Feed Name","url":"https://...","description":"one-line description"},{"title":"Feed Name","url":"https://...","description":"one-line description"}]}`, query),
-			"context": "",
-		}
-		return "suggesting feeds…", func() tea.Msg {
-			text, err := mcp.Call(mcpCfg, args)
-			if err != nil {
-				return mcpResultMsg{text: "suggest error: " + err.Error()}
-			}
-			feeds, err := parseSuggestJSON(text)
-			if err != nil {
-				return mcpResultMsg{text: "suggest parse error: " + err.Error() + "\n\n" + text}
-			}
-			return mcpSuggestMsg{feeds: feeds}
-		}
+	if mcpCfg == nil {
+		return "mcp: not configured or disabled — use 'mcp set <command> [args...]'", nil
 	}
-
+	args := map[string]any{
+		"question": fmt.Sprintf(`You are a feed curator for engineers. Suggest 20 RSS feeds about "%s" that a senior developer would actually subscribe to — think official blogs, release notes, changelogs, technical deep-dives. Return ONLY valid JSON, no prose:
+{"feeds":[{"title":"Feed Name","url":"https://...","description":"one-line description"},{"title":"Feed Name","url":"https://...","description":"one-line description"}]}`, query),
+		"context": "",
+	}
 	return "suggesting feeds…", func() tea.Msg {
-		apiCfg, err := api.LoadOrRegister()
-		if err != nil {
-			return mcpResultMsg{text: "api: " + err.Error()}
-		}
-		feeds, err := api.Suggest(apiCfg.UserKey, "", "", "", query)
+		text, err := mcp.Call(mcpCfg, args)
 		if err != nil {
 			return mcpResultMsg{text: "suggest error: " + err.Error()}
 		}
-		result := make([]suggestFeed, len(feeds))
-		for i, f := range feeds {
-			result[i] = suggestFeed{Title: f.Title, URL: f.URL, Description: f.Description}
+		feeds, err := parseSuggestJSON(text)
+		if err != nil {
+			return mcpResultMsg{text: "suggest parse error: " + err.Error() + "\n\n" + text}
 		}
-		return mcpSuggestMsg{feeds: result}
+		return mcpSuggestMsg{feeds: feeds}
 	}
 }
 

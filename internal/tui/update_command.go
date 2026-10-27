@@ -57,8 +57,6 @@ func (m *Model) execCommand(raw string) (string, tea.Cmd) {
 		return m.cmdMCP("summary", parts[1:])
 	case "mcp":
 		return m.cmdMCPConfig(parts[1:]), nil
-	case "usage":
-		return m.cmdUsage()
 	case "clear":
 		return m.cmdClear(), nil
 	}
@@ -202,7 +200,6 @@ func (m *Model) cmdHelp() string {
 		"  summary week          summarize articles from the last 7 days (mcp required)",
 		"  summary theme [text]  set or show the saved summary theme",
 		"  summary language [x]  set or show the saved summary language",
-		"  usage                  show plan and remaining API quota",
 		"  mcp set <cmd> [args...]  register MCP server",
 		"  mcp list              list configured MCP server",
 		"  mcp on / mcp off      enable or disable MCP",

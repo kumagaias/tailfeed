@@ -50,7 +50,7 @@ func rootCmd() *cobra.Command {
 	root.Flags().StringVarP(&groupName, "group", "g", "", "filter by group name (use with -f)")
 	root.Flags().BoolVarP(&terminal, "terminal", "t", false, "open terminal UI instead of browser UI")
 	root.Flags().StringVar(&addr, "addr", "127.0.0.1:8080", "listen address for browser UI")
-	root.AddCommand(addCmd(), removeCmd(), listCmd(), webCmd(), mcpCmd(), summaryCmd(), registerCmd(), clearCmd(), usageCmd())
+	root.AddCommand(addCmd(), removeCmd(), listCmd(), webCmd(), mcpCmd(), summaryCmd(), clearCmd())
 	return root
 }
 

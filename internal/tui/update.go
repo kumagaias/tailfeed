@@ -158,10 +158,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateDetailContent()
 		return m, nil
 
-	case usageMsg:
-		m.status = msg.text
-		return m, nil
-
 	case tea.MouseMsg:
 		return m.handleMouseMsg(msg)
 

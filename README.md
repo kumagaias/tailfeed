@@ -48,6 +48,8 @@ The browser UI supports `j`/`k` to move, `gg`/`G` for oldest/newest,
 `h`/`l` to hide/show detail, `o`/`enter` to open, `space` to stock,
 and `/` to focus search.
 
+AI summaries and feed suggestions require a configured MCP server.
+
 ## Commands (`/`)
 
 ```
@@ -64,6 +66,8 @@ summary language   set/show summary language
 ```
 
 ## MCP (AI features)
+
+AI features use this MCP server; they do not call a tailfeed hosted API.
 
 ```bash
 tailfeed mcp set <command> [args...]

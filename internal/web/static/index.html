@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tailfeed</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">tf</span><span>tailfeed</span></div>
+    <nav id="groups" class="groups"></nav>
+    <div class="settings-link">
+      <button id="settingsButton" class="group" type="button"><span class="settings-icon" aria-hidden="true">⚙</span><span class="group-name">Settings</span></button>
+    </div>
+  </aside>
+  <main class="main">
+    <section id="articleView" class="article-view">
+      <header class="toolbar">
+        <div class="title">
+          <h1 id="currentGroup">All</h1>
+          <span id="articleCount" class="meta">0 articles</span>
+        </div>
+        <input id="search" class="search" type="search" placeholder="Search articles">
+        <button id="detailToggle" class="action" type="button">Hide detail</button>
+      </header>
+      <section id="content" class="content">
+        <div id="list" class="list"></div>
+        <article id="detail" class="detail"></article>
+      </section>
+    </section>
+    <section id="settingsView" class="settings-view" hidden>
+      <div class="settings-inner">
+        <header class="settings-header">
+          <h1>Settings</h1>
+          <p>Manage the feeds that appear in your timeline.</p>
+        </header>
+        <section class="settings-card">
+          <h2>Feeds</h2>
+          <p>Add a feed URL to your timeline.</p>
+          <form id="feedForm" class="feed-form">
+            <input id="feedURL" type="url" required placeholder="https://…" aria-label="Feed URL">
+            <button type="submit">Add</button>
+          </form>
+          <div id="feedList" class="feed-list"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="/assets/app.js" defer></script>
+</body>
+</html>

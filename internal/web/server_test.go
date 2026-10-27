@@ -72,8 +72,18 @@ func TestIndexPlacesFeedManagementInSettingsView(t *testing.T) {
 	if strings.Contains(body, `<summary>Manage feeds</summary>`) {
 		t.Fatal("legacy sidebar feed manager is still present")
 	}
-	if !strings.Contains(body, `.filter(item => !registered.has(item.feed.url))`) {
-		t.Fatal("catalog must exclude feeds that are already registered")
+	if !strings.Contains(body, `href="/assets/app.css"`) || !strings.Contains(body, `src="/assets/app.js"`) {
+		t.Fatal("split web assets are not linked from the index")
+	}
+	if strings.Contains(body, "catalog") {
+		t.Fatal("retired feed catalog markup is still present")
+	}
+	script, err := embeddedAssets.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(script), "/api/catalog") {
+		t.Fatal("retired feed catalog request is still present")
 	}
 }
 
@@ -118,5 +128,19 @@ func TestPaginateArticlesReturnsNewestPageInDisplayOrder(t *testing.T) {
 	}
 	if len(page) != 50 || page[0].ID != 21 || page[49].ID != 70 {
 		t.Fatalf("unexpected second page: len=%d first=%d last=%d", len(page), page[0].ID, page[len(page)-1].ID)
+	}
+}
+
+func TestRetiredCatalogRoutesReturnNotFound(t *testing.T) {
+	handler, err := New(openWebTestDB(t)).handler()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/catalog/genres", "/api/catalog/feeds"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("GET %s status = %d, want %d", path, response.Code, http.StatusNotFound)
+		}
 	}
 }

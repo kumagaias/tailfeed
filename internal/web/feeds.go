@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kumagaias/tailfeed/internal/api"
 	"github.com/kumagaias/tailfeed/internal/db"
 )
 
@@ -98,35 +97,4 @@ func (s *Server) handleFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "feed not found", http.StatusNotFound)
-}
-
-func (s *Server) handleCatalogGenres(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	genres, err := api.CatalogGenres()
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, map[string]any{"genres": genres})
-}
-
-func (s *Server) handleCatalogFeeds(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	genre := strings.TrimSpace(r.URL.Query().Get("genre"))
-	if genre == "" {
-		http.Error(w, "genre is required", http.StatusBadRequest)
-		return
-	}
-	feeds, err := api.CatalogFeeds(genre, strings.TrimSpace(r.URL.Query().Get("language")), 100)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeJSON(w, map[string]any{"feeds": feeds})
 }
